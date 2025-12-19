@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>イベント詳細 - PredicTrade</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body{font-family:Inter,sans-serif;background:#0f172a;color:#f1f5f9}
+    .gradient-text{background:linear-gradient(135deg,#10b981,#065f46);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .nav-link{transition:all .3s ease}.nav-link:hover{color:#10b981;transform:translateY(-1px)}
+    .option-card{background:linear-gradient(135deg,#1e293b,#334155);border:1px solid rgba(148,163,184,.2);transition:all .3s ease;cursor:pointer}
+    .option-card:hover{border-color:#10b981;transform:translateY(-2px);box-shadow:0 8px 25px rgba(16,185,129,.15)}
+    .option-card.selected{border-color:#10b981;background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(16,185,129,.05))}
+  </style>
+</head>
+<body>
+<header class="bg-slate-900/95 backdrop-blur-sm border-b border-slate-700 sticky top-0 z-50">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center h-16">
+      <div class="flex items-center space-x-2">
+        <div class="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-lg flex items-center justify-center">
+          <span class="text-white font-bold text-sm">P</span>
+        </div>
+        <h1 class="text-xl font-bold gradient-text">PredicTrade</h1>
+      </div>
+      <nav class="hidden md:flex space-x-8">
+        <a href="index.html" class="nav-link text-slate-300 hover:text-emerald-400">イベント</a>
+        <a href="create.html" class="nav-link text-slate-300 hover:text-emerald-400">作成</a>
+        <a href="dashboard.html" class="nav-link text-slate-300 hover:text-emerald-400">ダッシュボード</a>
+      </nav>
+      <div class="text-sm">
+        <span class="text-slate-400">ポイント:</span>
+        <span class="text-emerald-400 font-bold" id="userPoints">-</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="py-10">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="mb-6">
+      <div class="flex items-center gap-3 mb-3">
+        <span id="eventCategory" class="bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-sm font-medium"></span>
+        <span id="eventStatus" class="bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-full text-sm font-medium">開催中</span>
+      </div>
+      <h1 id="eventTitle" class="text-3xl font-bold text-slate-100 mb-3"></h1>
+      <p id="eventDescription" class="text-slate-300 text-lg mb-4"></p>
+      <div class="flex flex-wrap gap-6 text-sm text-slate-400">
+        <div>締切: <span id="eventEndDate" class="text-slate-200"></span></div>
+        <div>参加者: <span id="participantCount" class="text-slate-200"></span></div>
+        <div>賞金プール: <span id="prizePool" class="text-slate-200"></span></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2">
+        <h3 class="text-xl font-bold mb-3">予想する</h3>
+        <div id="predictionOptions" class="space-y-3 mb-4"></div>
+
+        <form id="submitPredictionForm" class="bg-slate-800/50 border border-slate-700 rounded-xl p-5 space-y-4">
+          <div class="flex gap-3">
+            <div class="flex-1">
+              <label class="block text-sm text-slate-300 mb-1">賭けポイント（10〜1000）</label>
+              <input id="betPoints" type="number" min="10" max="1000" value="50"
+                     class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-100" />
+            </div>
+            <div class="w-40">
+              <label class="block text-sm text-slate-300 mb-1">確信度</label>
+              <input id="confidence" type="range" min="0" max="100" value="70" class="w-full" />
+              <div class="text-slate-200 text-sm"> <span id="confidenceValue">70</span>%</div>
+            </div>
+          </div>
+
+          <button id="submitPredictionBtn" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-lg font-medium disabled:opacity-50">
+            予想を投稿
+          </button>
+          <p id="msg" class="text-sm text-slate-300"></p>
+        </form>
+      </div>
+
+      <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-xl font-bold mb-3">分布</h3>
+        <canvas id="chart" height="220"></canvas>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script type="module" src="/src/event.js"></script>
+</body>
+</html>
