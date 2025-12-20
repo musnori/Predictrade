@@ -1,4 +1,3 @@
-// src/storage.js
 async function api(path, opts) {
   const res = await fetch(path, opts);
   if (!res.ok) {
@@ -32,22 +31,6 @@ export async function submitPrediction({ eventId, deviceId, optionId, points }) 
   });
 }
 
-// ✅ 管理者/手動/自動 いずれでも resolve 可能
-// - optionId を渡したら「管理者が推した結果」
-// - mode:"auto" を渡したら「期限到来の自動確定（先頭オッズ）」
-// ADMIN_KEYが設定されている環境では adminKey が必要
-export async function resolveEvent({ eventId, optionId, mode = "manual", adminKey = "" }) {
-  return api(`/api/events/${eventId}/resolve`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(adminKey ? { "x-admin-key": adminKey } : {}),
-    },
-    body: JSON.stringify({ optionId, mode }),
-  });
-}
-
-// 表示用ユーティリティ
 export function getCategoryName(category) {
   const map = {
     sports: "スポーツ",
@@ -72,12 +55,16 @@ export function timeRemaining(endDate) {
   return `${d}日`;
 }
 
-// ✅ votes じゃなく「賭けポイント（staked）」でオッズ（確率）を計算
-export function calcOdds(ev) {
+// ✅ 賭けポイント比率を%にして返す（確信度は無し）
+export function calcOddsFromEvent(ev) {
   const total = Number(ev.totalStaked || 0);
-  return (ev.options || []).map((o) => {
+  const opts = (ev.options || []).map((o) => {
     const s = Number(o.staked || 0);
-    const p = total <= 0 ? 0 : Math.round((s / total) * 1000) / 10; // 0.1%刻み
-    return { ...o, oddsPct: p };
+    const pct = total <= 0 ? 0 : Math.round((s / total) * 1000) / 10; // 0.1%
+    return { ...o, staked: s, oddsPct: pct };
   });
+
+  // total=0 のときは均等表示にしたければここを変更
+  // いまは 0% 表示のまま（Polymarketっぽくしたいなら均等にもできる）
+  return opts;
 }
