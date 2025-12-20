@@ -24,15 +24,30 @@ export async function createEvent(payload) {
   });
 }
 
-export async function submitPrediction({ eventId, deviceId, optionId, points, confidence }) {
+export async function submitPrediction({ eventId, deviceId, optionId, points }) {
   return api(`/api/events/${eventId}/predict`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ deviceId, optionId, points, confidence }),
+    body: JSON.stringify({ deviceId, optionId, points }),
   });
 }
 
-// 表示用ユーティリティ（既存互換）
+// ✅ 管理者/手動/自動 いずれでも resolve 可能
+// - optionId を渡したら「管理者が推した結果」
+// - mode:"auto" を渡したら「期限到来の自動確定（先頭オッズ）」
+// ADMIN_KEYが設定されている環境では adminKey が必要
+export async function resolveEvent({ eventId, optionId, mode = "manual", adminKey = "" }) {
+  return api(`/api/events/${eventId}/resolve`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(adminKey ? { "x-admin-key": adminKey } : {}),
+    },
+    body: JSON.stringify({ optionId, mode }),
+  });
+}
+
+// 表示用ユーティリティ
 export function getCategoryName(category) {
   const map = {
     sports: "スポーツ",
@@ -57,10 +72,12 @@ export function timeRemaining(endDate) {
   return `${d}日`;
 }
 
-export function calcPercentages(ev) {
-  const totalVotes = (ev.options || []).reduce((s, o) => s + (o.votes || 0), 0);
-  return (ev.options || []).map((o) => ({
-    ...o,
-    percentage: totalVotes === 0 ? 0 : Math.round((o.votes / totalVotes) * 100),
-  }));
+// ✅ votes じゃなく「賭けポイント（staked）」でオッズ（確率）を計算
+export function calcOdds(ev) {
+  const total = Number(ev.totalStaked || 0);
+  return (ev.options || []).map((o) => {
+    const s = Number(o.staked || 0);
+    const p = total <= 0 ? 0 : Math.round((s / total) * 1000) / 10; // 0.1%刻み
+    return { ...o, oddsPct: p };
+  });
 }

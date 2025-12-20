@@ -18,8 +18,11 @@
     .nav-link:hover{color:#10b981;transform:translateY(-1px)}
     .option-card{background:rgba(30,41,59,.5);border:1px solid rgba(148,163,184,.2)}
     .option-card.selected{border-color:rgba(16,185,129,.8);box-shadow:0 0 0 2px rgba(16,185,129,.25) inset}
+    .btn{transition:all .2s ease}
+    .btn:hover{transform:translateY(-1px)}
   </style>
 </head>
+
 <body>
 <header class="bg-slate-900/95 backdrop-blur-sm border-b border-slate-700 sticky top-0 z-50">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -37,7 +40,6 @@
         <a href="dashboard.html" class="nav-link text-slate-300 hover:text-emerald-400">ダッシュボード</a>
       </nav>
 
-      <!-- 右上：ニックネーム＋ポイント -->
       <div class="text-sm text-right leading-tight">
         <div class="text-slate-200 font-semibold" id="userName">-</div>
         <div>
@@ -51,10 +53,19 @@
 
 <main class="py-10">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+    <!-- ✅ 戻るボタン -->
+    <div class="mb-4">
+      <button id="backBtn" class="btn px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100">
+        ← 戻る
+      </button>
+    </div>
+
     <div class="mb-6">
       <div class="flex items-center gap-3 mb-2">
         <span id="eventCategory" class="px-3 py-1 rounded-full text-sm bg-emerald-500/15 text-emerald-300">-</span>
         <span class="text-slate-400 text-sm" id="eventEndDate">-</span>
+        <span class="text-slate-400 text-sm" id="eventStatusBadge"></span>
       </div>
 
       <h2 class="text-3xl font-bold text-slate-100 mb-2" id="eventTitle">-</h2>
@@ -67,63 +78,81 @@
         <div class="card rounded-lg px-4 py-2">
           賞金プール: <span id="prizePool" class="text-emerald-400 font-semibold">0ポイント</span>
         </div>
+        <div class="card rounded-lg px-4 py-2">
+          総賭け: <span id="totalStaked" class="text-slate-100 font-semibold">0pt</span>
+        </div>
       </div>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <!-- left: vote -->
+      <!-- left: predict -->
       <section class="card rounded-xl p-6">
-        <h3 class="text-xl font-bold text-slate-100 mb-4">予想を投稿</h3>
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-xl font-bold text-slate-100">予想を投稿</h3>
+          <div id="resolvedLabel" class="text-sm text-emerald-300 font-semibold"></div>
+        </div>
 
         <div id="predictionOptions" class="space-y-3 mb-6"></div>
 
         <form id="submitPredictionForm" class="space-y-4">
           <div>
-            <label class="block text-sm text-slate-300 mb-2">賭けるポイント</label>
-            <input
-              type="number"
-              id="betPoints"
-              min="10"
-              max="1000"
-              value="100"
-              class="w-full bg-slate-900/40 border border-slate-600 rounded-lg px-4 py-3 text-slate-100"
-              required
-            />
-            <p class="text-xs text-slate-400 mt-1">10〜1,000</p>
+            <label class="block text-sm text-slate-300 mb-2">賭けポイント（10〜1000）</label>
+            <input id="points" type="number" min="10" max="1000" value="50"
+              class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-slate-100" />
           </div>
 
-          <div>
-            <label class="block text-sm text-slate-300 mb-2">確信度: <span id="confidenceValue" class="text-emerald-300 font-semibold">70</span></label>
-            <input
-              type="range"
-              id="confidence"
-              min="0"
-              max="100"
-              value="70"
-              class="w-full"
-            />
-          </div>
-
-          <button
-            id="submitPredictionBtn"
-            type="submit"
-            class="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg py-3 font-semibold transition"
-          >
+          <button id="submitBtn" class="w-full btn bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-lg font-medium">
             投稿する
           </button>
 
-          <div id="msg" class="text-sm text-slate-200"></div>
+          <p id="msg" class="text-sm text-slate-200"></p>
         </form>
+
+        <!-- ✅ resolve UI（管理者/手動） -->
+        <div class="mt-8 border-t border-slate-700 pt-6">
+          <h4 class="text-slate-100 font-bold mb-2">結果を確定（管理者）</h4>
+          <p class="text-slate-300 text-sm mb-3">
+            ADMIN_KEY を設定している場合のみ鍵が必要です（デモは鍵なしでもOK設定）。
+          </p>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input id="adminKey" placeholder="admin key（必要な場合）"
+              class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100" />
+            <select id="resolveOption" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"></select>
+          </div>
+
+          <div class="flex gap-3 mt-3">
+            <button id="resolvePickBtn" type="button"
+              class="btn px-4 py-2 rounded-lg bg-slate-100 text-slate-900 hover:bg-white">
+              この選択肢で確定
+            </button>
+            <button id="resolveAutoBtn" type="button"
+              class="btn px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100">
+              先頭オッズで自動確定
+            </button>
+          </div>
+
+          <p id="resolveMsg" class="text-sm text-slate-200 mt-2"></p>
+        </div>
       </section>
 
       <!-- right: chart -->
       <section class="card rounded-xl p-6">
-        <h3 class="text-xl font-bold text-slate-100 mb-4">投票状況</h3>
-        <div class="h-[320px]">
-          <canvas id="chart"></canvas>
+        <h3 class="text-xl font-bold text-slate-100 mb-4">オッズ推移（賭け比率）</h3>
+        <div class="text-sm text-slate-300 mb-4">
+          予想が投稿されるたびにスナップショットを保存し、選択肢ごとの確率（%）を折れ線で表示します。
+        </div>
+        <div class="bg-slate-900/40 border border-slate-700 rounded-xl p-3">
+          <canvas id="oddsChart" height="120"></canvas>
+        </div>
+
+        <div class="mt-6">
+          <h4 class="text-slate-100 font-bold mb-2">直近の投稿</h4>
+          <div id="predictionsLog" class="space-y-2 max-h-[340px] overflow-auto pr-1"></div>
         </div>
       </section>
     </div>
+
   </div>
 </main>
 
