@@ -5,12 +5,11 @@ export default async function handler(req, res) {
   const store = await loadStore();
 
   if (req.method === "GET") {
-    // 期限到来の自動resolveは /api/events/[id] 側で必ず発火する設計
     return res.status(200).json(store.events || []);
   }
 
   if (req.method === "POST") {
-    const { title, description, category, endDate, prizePool, options } = req.body || {};
+    const { title, description, category, endDate, options } = req.body || {};
     if (!title || !description || !category || !endDate) return res.status(400).send("missing fields");
     if (!Array.isArray(options) || options.length < 2 || options.length > 4)
       return res.status(400).send("options must be 2..4");
@@ -24,16 +23,17 @@ export default async function handler(req, res) {
       category,
       status: "active",
       endDate: new Date(endDate).toISOString(),
-      participants: 0,
-      prizePool: Number(prizePool || 0),
 
+      participants: 0,
+
+      // ✅ 固定賞金なし：ここがプール
       totalStaked: 0,
       options: options.map((t, idx) => ({
         id: idx + 1,
         text: String(t).slice(0, 60),
-        votes: 0,
         staked: 0,
       })),
+
       predictions: [],
       snapshots: [],
       resolvedOptionId: null,

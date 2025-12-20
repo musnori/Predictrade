@@ -1,5 +1,5 @@
 // api/events/[id]/predict.js
-import { loadStore, saveStore, ensureUser, maybeAutoResolveEvent } from "../../_kv.js";
+import { loadStore, saveStore, ensureUser } from "../../_kv.js";
 
 function pushSnapshot(ev) {
   const total = Number(ev.totalStaked || 0);
@@ -10,7 +10,6 @@ function pushSnapshot(ev) {
   }
   ev.snapshots = Array.isArray(ev.snapshots) ? ev.snapshots : [];
   ev.snapshots.push({ t: new Date().toISOString(), probs });
-  // 無限増加防止（直近200点だけ）
   if (ev.snapshots.length > 200) ev.snapshots = ev.snapshots.slice(-200);
 }
 
@@ -21,14 +20,8 @@ export default async function handler(req, res) {
   const eventId = Number(req.query.id);
   const ev = (store.events || []).find((e) => e.id === eventId);
   if (!ev) return res.status(404).send("event not found");
-
-  // ✅ 期限到来→自動resolve済みなら投稿不可
-  const autoChanged = maybeAutoResolveEvent(store, ev);
-  if (autoChanged) await saveStore(store);
-
   if (ev.status === "resolved") return res.status(400).send("event already resolved");
 
-  // ✅ 締切チェック（終了後は投稿不可）
   const now = Date.now();
   const end = new Date(ev.endDate).getTime();
   if (!Number.isFinite(end)) return res.status(400).send("invalid endDate");
@@ -50,21 +43,15 @@ export default async function handler(req, res) {
   ev.predictions = Array.isArray(ev.predictions) ? ev.predictions : [];
   const alreadyParticipated = ev.predictions.some((pred) => pred.deviceId === deviceId);
 
-  // ---- 更新処理 ----
+  // ✅ 賭けポイントを引く
   user.points -= p;
 
-  // votes = 投稿回数（UI互換のため残す）
-  opt.votes = (opt.votes || 0) + 1;
-
-  // ✅ staked = 賭けポイント合計（オッズ用）
+  // ✅ ここがプールになる
   opt.staked = Number(opt.staked || 0) + p;
   ev.totalStaked = Number(ev.totalStaked || 0) + p;
 
-  if (!alreadyParticipated) {
-    ev.participants = (ev.participants || 0) + 1;
-  }
+  if (!alreadyParticipated) ev.participants = Number(ev.participants || 0) + 1;
 
-  // 投稿ログ追加（confidenceは廃止）
   ev.predictions.unshift({
     deviceId,
     name: user.name,
@@ -74,7 +61,6 @@ export default async function handler(req, res) {
     payout: 0,
   });
 
-  // ✅ オッズ推移のスナップショットを保存
   pushSnapshot(ev);
 
   await saveStore(store);
