@@ -23,11 +23,11 @@ export async function createEvent(payload) {
   });
 }
 
-export async function submitPrediction({ eventId, deviceId, optionId, points }) {
+export async function submitPrediction({ eventId, deviceId, optionId, points, confidence }) {
   return api(`/api/events/${eventId}/predict`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ deviceId, optionId, points }),
+    body: JSON.stringify({ deviceId, optionId, points, confidence }),
   });
 }
 
@@ -47,6 +47,7 @@ export function timeRemaining(endDate) {
   const now = Date.now();
   const end = new Date(endDate).getTime();
   const diff = end - now;
+  if (!Number.isFinite(end)) return "-";
   if (diff <= 0) return "終了";
   const h = Math.floor(diff / 36e5);
   const m = Math.floor((diff % 36e5) / 6e4);
@@ -55,16 +56,21 @@ export function timeRemaining(endDate) {
   return `${d}日`;
 }
 
-// ✅ 賭けポイント比率を%にして返す（確信度は無し）
-export function calcOddsFromEvent(ev) {
-  const total = Number(ev.totalStaked || 0);
-  const opts = (ev.options || []).map((o) => {
-    const s = Number(o.staked || 0);
-    const pct = total <= 0 ? 0 : Math.round((s / total) * 1000) / 10; // 0.1%
-    return { ...o, staked: s, oddsPct: pct };
-  });
+// ✅ votesベースで比率を算出（バックエンド互換）
+export function calcVoteStats(ev) {
+  const options = Array.isArray(ev.options) ? ev.options : [];
+  const rows = options.map((o) => ({
+    id: Number(o.id),
+    text: String(o.text ?? ""),
+    votes: Number(o.votes || 0),
+  }));
 
-  // total=0 のときは均等表示にしたければここを変更
-  // いまは 0% 表示のまま（Polymarketっぽくしたいなら均等にもできる）
-  return opts;
+  const totalVotes = rows.reduce((a, b) => a + b.votes, 0);
+
+  const withPct = rows.map((r) => ({
+    ...r,
+    pct: totalVotes <= 0 ? 0 : Math.round((r.votes / totalVotes) * 1000) / 10, // 0.1%
+  }));
+
+  return { totalVotes, rows: withPct };
 }

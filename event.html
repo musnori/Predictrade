@@ -69,7 +69,6 @@
       <div class="flex items-center gap-3 mb-2 flex-wrap">
         <span id="eventCategory" class="px-3 py-1 rounded-full text-sm bg-emerald-500/15 text-emerald-300">-</span>
         <span class="text-slate-400 text-sm" id="eventEndDate">-</span>
-        <span id="eventStatusBadge" class="text-sm"></span>
       </div>
 
       <h2 class="text-2xl sm:text-3xl font-bold text-slate-100 mb-2" id="eventTitle">-</h2>
@@ -83,7 +82,7 @@
           賞金プール: <span id="prizePool" class="text-emerald-400 font-semibold">0ポイント</span>
         </div>
         <div class="card rounded-lg px-4 py-2">
-          総賭け: <span id="totalStaked" class="text-slate-100 font-semibold">0pt</span>
+          総投稿: <span id="totalVotes" class="text-slate-100 font-semibold">0回</span>
         </div>
       </div>
     </div>
@@ -111,7 +110,20 @@
             <p class="text-xs text-slate-400 mt-1">10〜1,000</p>
           </div>
 
-          <!-- ✅ 確信度は無し -->
+          <!-- ✅ いまのAPIはconfidenceを受けるので復活（表示は最小） -->
+          <div>
+            <label class="block text-sm text-slate-300 mb-2">確信度（0〜100）</label>
+            <input
+              type="number"
+              id="confidence"
+              min="0"
+              max="100"
+              value="50"
+              class="w-full bg-slate-900/40 border border-slate-600 rounded-lg px-4 py-3 text-slate-100"
+              required
+            />
+            <p class="text-xs text-slate-400 mt-1">今のAPI互換のため一旦残す（後で削除可）</p>
+          </div>
 
           <button
             id="submitPredictionBtn"
@@ -127,12 +139,13 @@
 
       <!-- 右：グラフ -->
       <section class="card rounded-xl p-5 sm:p-6">
-        <h3 class="text-lg sm:text-xl font-bold text-slate-100 mb-4">オッズ推移（賭け比率）</h3>
+        <h3 class="text-lg sm:text-xl font-bold text-slate-100 mb-4">投票比率（現状）</h3>
         <div class="bg-slate-900/40 border border-slate-700 rounded-xl p-3">
           <div class="min-h-[260px] sm:min-h-[340px]">
             <canvas id="chart"></canvas>
           </div>
         </div>
+        <p class="text-xs text-slate-400 mt-2">※いまは履歴保存が無いので「現状比率」を表示</p>
       </section>
     </div>
 
