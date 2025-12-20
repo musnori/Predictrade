@@ -12,8 +12,7 @@
     .gradient-text{background:linear-gradient(135deg,#10b981,#065f46);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
     .form-input{background:#1e293b;border:1px solid rgba(148,163,184,.3);transition:all .3s ease}
     .form-input:focus{border-color:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.1);outline:none}
-    .nav-link{transition:all .3s ease}
-    .nav-link:hover{color:#10b981;transform:translateY(-1px)}
+    .nav-link{transition:all .3s ease}.nav-link:hover{color:#10b981;transform:translateY(-1px)}
   </style>
 </head>
 <body>
@@ -26,14 +25,20 @@
         </div>
         <h1 class="text-xl font-bold gradient-text">PredicTrade</h1>
       </div>
+
       <nav class="hidden md:flex space-x-8">
         <a href="index.html" class="nav-link text-slate-300 hover:text-emerald-400">イベント</a>
         <a href="create.html" class="nav-link text-emerald-400 font-medium">作成</a>
         <a href="dashboard.html" class="nav-link text-slate-300 hover:text-emerald-400">ダッシュボード</a>
       </nav>
-      <div class="text-sm">
-        <span class="text-slate-400">ポイント:</span>
-        <span class="text-emerald-400 font-bold" id="userPoints">-</span>
+
+      <!-- 右上：ニックネーム＋ポイント -->
+      <div class="text-sm text-right leading-tight">
+        <div class="text-slate-200 font-semibold" id="userName">-</div>
+        <div>
+          <span class="text-slate-400">ポイント:</span>
+          <span class="text-emerald-400 font-bold" id="userPoints">-</span>
+        </div>
       </div>
     </div>
   </div>

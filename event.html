@@ -3,18 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>イベント詳細 - PredicTrade</title>
+  <title>PredicTrade - イベント</title>
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     body{font-family:Inter,sans-serif;background:#0f172a;color:#f1f5f9}
     .gradient-text{background:linear-gradient(135deg,#10b981,#065f46);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-    .nav-link{transition:all .3s ease}.nav-link:hover{color:#10b981;transform:translateY(-1px)}
-    .option-card{background:linear-gradient(135deg,#1e293b,#334155);border:1px solid rgba(148,163,184,.2);transition:all .3s ease;cursor:pointer}
-    .option-card:hover{border-color:#10b981;transform:translateY(-2px);box-shadow:0 8px 25px rgba(16,185,129,.15)}
-    .option-card.selected{border-color:#10b981;background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(16,185,129,.05))}
+    .card{background:linear-gradient(135deg,#1e293b,#334155);border:1px solid rgba(148,163,184,.2)}
+    .nav-link{transition:all .3s ease}
+    .nav-link:hover{color:#10b981;transform:translateY(-1px)}
+    .option-card{background:rgba(30,41,59,.5);border:1px solid rgba(148,163,184,.2)}
+    .option-card.selected{border-color:rgba(16,185,129,.8);box-shadow:0 0 0 2px rgba(16,185,129,.25) inset}
   </style>
 </head>
 <body>
@@ -27,65 +30,99 @@
         </div>
         <h1 class="text-xl font-bold gradient-text">PredicTrade</h1>
       </div>
+
       <nav class="hidden md:flex space-x-8">
         <a href="index.html" class="nav-link text-slate-300 hover:text-emerald-400">イベント</a>
         <a href="create.html" class="nav-link text-slate-300 hover:text-emerald-400">作成</a>
         <a href="dashboard.html" class="nav-link text-slate-300 hover:text-emerald-400">ダッシュボード</a>
       </nav>
-      <div class="text-sm">
-        <span class="text-slate-400">ポイント:</span>
-        <span class="text-emerald-400 font-bold" id="userPoints">-</span>
+
+      <!-- 右上：ニックネーム＋ポイント -->
+      <div class="text-sm text-right leading-tight">
+        <div class="text-slate-200 font-semibold" id="userName">-</div>
+        <div>
+          <span class="text-slate-400">ポイント:</span>
+          <span class="text-emerald-400 font-bold" id="userPoints">-</span>
+        </div>
       </div>
     </div>
   </div>
 </header>
 
 <main class="py-10">
-  <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="mb-6">
-      <div class="flex items-center gap-3 mb-3">
-        <span id="eventCategory" class="bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-sm font-medium"></span>
-        <span id="eventStatus" class="bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-full text-sm font-medium">開催中</span>
+      <div class="flex items-center gap-3 mb-2">
+        <span id="eventCategory" class="px-3 py-1 rounded-full text-sm bg-emerald-500/15 text-emerald-300">-</span>
+        <span class="text-slate-400 text-sm" id="eventEndDate">-</span>
       </div>
-      <h1 id="eventTitle" class="text-3xl font-bold text-slate-100 mb-3"></h1>
-      <p id="eventDescription" class="text-slate-300 text-lg mb-4"></p>
-      <div class="flex flex-wrap gap-6 text-sm text-slate-400">
-        <div>締切: <span id="eventEndDate" class="text-slate-200"></span></div>
-        <div>参加者: <span id="participantCount" class="text-slate-200"></span></div>
-        <div>賞金プール: <span id="prizePool" class="text-slate-200"></span></div>
+
+      <h2 class="text-3xl font-bold text-slate-100 mb-2" id="eventTitle">-</h2>
+      <p class="text-slate-300" id="eventDescription">-</p>
+
+      <div class="mt-4 flex flex-wrap gap-4 text-sm text-slate-300">
+        <div class="card rounded-lg px-4 py-2">
+          参加者: <span id="participantCount" class="text-slate-100 font-semibold">0人</span>
+        </div>
+        <div class="card rounded-lg px-4 py-2">
+          賞金プール: <span id="prizePool" class="text-emerald-400 font-semibold">0ポイント</span>
+        </div>
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div class="lg:col-span-2">
-        <h3 class="text-xl font-bold mb-3">予想する</h3>
-        <div id="predictionOptions" class="space-y-3 mb-4"></div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- left: vote -->
+      <section class="card rounded-xl p-6">
+        <h3 class="text-xl font-bold text-slate-100 mb-4">予想を投稿</h3>
 
-        <form id="submitPredictionForm" class="bg-slate-800/50 border border-slate-700 rounded-xl p-5 space-y-4">
-          <div class="flex gap-3">
-            <div class="flex-1">
-              <label class="block text-sm text-slate-300 mb-1">賭けポイント（10〜1000）</label>
-              <input id="betPoints" type="number" min="10" max="1000" value="50"
-                     class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-100" />
-            </div>
-            <div class="w-40">
-              <label class="block text-sm text-slate-300 mb-1">確信度</label>
-              <input id="confidence" type="range" min="0" max="100" value="70" class="w-full" />
-              <div class="text-slate-200 text-sm"> <span id="confidenceValue">70</span>%</div>
-            </div>
+        <div id="predictionOptions" class="space-y-3 mb-6"></div>
+
+        <form id="submitPredictionForm" class="space-y-4">
+          <div>
+            <label class="block text-sm text-slate-300 mb-2">賭けるポイント</label>
+            <input
+              type="number"
+              id="betPoints"
+              min="10"
+              max="1000"
+              value="100"
+              class="w-full bg-slate-900/40 border border-slate-600 rounded-lg px-4 py-3 text-slate-100"
+              required
+            />
+            <p class="text-xs text-slate-400 mt-1">10〜1,000</p>
           </div>
 
-          <button id="submitPredictionBtn" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-lg font-medium disabled:opacity-50">
-            予想を投稿
-          </button>
-          <p id="msg" class="text-sm text-slate-300"></p>
-        </form>
-      </div>
+          <div>
+            <label class="block text-sm text-slate-300 mb-2">確信度: <span id="confidenceValue" class="text-emerald-300 font-semibold">70</span></label>
+            <input
+              type="range"
+              id="confidence"
+              min="0"
+              max="100"
+              value="70"
+              class="w-full"
+            />
+          </div>
 
-      <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
-        <h3 class="text-xl font-bold mb-3">分布</h3>
-        <canvas id="chart" height="220"></canvas>
-      </div>
+          <button
+            id="submitPredictionBtn"
+            type="submit"
+            class="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg py-3 font-semibold transition"
+          >
+            投稿する
+          </button>
+
+          <div id="msg" class="text-sm text-slate-200"></div>
+        </form>
+      </section>
+
+      <!-- right: chart -->
+      <section class="card rounded-xl p-6">
+        <h3 class="text-xl font-bold text-slate-100 mb-4">投票状況</h3>
+        <div class="h-[320px]">
+          <canvas id="chart"></canvas>
+        </div>
+      </section>
     </div>
   </div>
 </main>
