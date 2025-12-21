@@ -88,3 +88,30 @@ export async function initAuthAndRender() {
   return { deviceId, name: serverName, points };
 
 }
+
+
+export function logout() {
+  localStorage.removeItem(LS_NAME);
+  // deviceIdも消したいなら下も外さずに
+  // localStorage.removeItem(LS_DEVICE);
+  location.reload();
+}
+
+export async function rename() {
+  const deviceId = getOrCreateDeviceId();
+  const name = await showNameModal();
+  localStorage.setItem(LS_NAME, name);
+  const data = await upsertUserOnServer(deviceId, name);
+
+  const serverName = (data?.user?.name ?? name).trim();
+  if (serverName && serverName !== name) localStorage.setItem(LS_NAME, serverName);
+
+  // 画面表示も即反映
+  const pointsEl = document.getElementById("userPoints");
+  if (pointsEl) pointsEl.textContent = Number(data?.user?.points || 0).toLocaleString();
+
+  const nameEl = document.getElementById("userName");
+  if (nameEl) nameEl.textContent = serverName;
+
+  return data?.user;
+}

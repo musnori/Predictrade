@@ -1,32 +1,22 @@
 // src/userMenu.js
+import { rename, logout } from "./auth.js";
+
 export function initUserMenu() {
-  const btn = document.getElementById("userMenuBtn");
-  const menu = document.getElementById("userMenu");
-  if (!btn || !menu) return;
+  const wrap = document.getElementById("userMenu");
+  if (!wrap) return;
 
-  const close = () => {
-    menu.classList.add("hidden");
-    btn.setAttribute("aria-expanded", "false");
-  };
+  // すでにUIがあるならそこに差し込んでOK
+  wrap.innerHTML = `
+    <button id="btnRename" class="px-3 py-2 rounded-lg bg-slate-700 text-sm">名前変更</button>
+    <button id="btnLogout" class="px-3 py-2 rounded-lg bg-slate-800 text-sm">ログアウト</button>
+  `;
 
-  const open = () => {
-    menu.classList.remove("hidden");
-    btn.setAttribute("aria-expanded", "true");
-  };
-
-  const toggle = () => {
-    const isHidden = menu.classList.contains("hidden");
-    if (isHidden) open();
-    else close();
-  };
-
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    toggle();
+  document.getElementById("btnRename")?.addEventListener("click", async () => {
+    await rename();
   });
 
-  document.addEventListener("click", close);
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") close();
+  document.getElementById("btnLogout")?.addEventListener("click", () => {
+    if (!confirm("ログアウトしますか？")) return;
+    logout();
   });
 }
