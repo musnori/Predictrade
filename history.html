@@ -3,21 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover" />
-  <title>ダッシュボード - PredicTrade</title>
+  <title>履歴 - PredicTrade</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
-    html, body { height: 100%; }
-    body{
-      font-family:Inter,sans-serif;background:#0f172a;color:#f1f5f9;
-      overflow-x:hidden;
-      padding-top: env(safe-area-inset-top);
-      padding-bottom: env(safe-area-inset-bottom);
-    }
+    body{font-family:Inter,sans-serif;background:#0f172a;color:#f1f5f9;}
     .gradient-text{background:linear-gradient(135deg,#10b981,#065f46);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
     .nav-link{transition:all .2s ease}.nav-link:hover{color:#10b981;transform:translateY(-1px)}
-    .stats-card{background:linear-gradient(135deg,#1e293b,#334155);border:1px solid rgba(16,185,129,.2)}
+    .card{background:linear-gradient(135deg,#1e293b,#334155);border:1px solid rgba(148,163,184,.2)}
+    .badge{border:1px solid rgba(148,163,184,.25)}
   </style>
 </head>
 
@@ -35,8 +29,8 @@
       <nav class="hidden md:flex space-x-8">
         <a href="index.html" class="nav-link text-slate-300 hover:text-emerald-400">イベント</a>
         <a href="create.html" class="nav-link text-slate-300 hover:text-emerald-400">作成</a>
-        <a href="dashboard.html" class="nav-link text-emerald-400 font-medium">ダッシュボード</a>
-        <a href="history.html" class="nav-link text-slate-300 hover:text-emerald-400">履歴</a>
+        <a href="dashboard.html" class="nav-link text-slate-300 hover:text-emerald-400">ダッシュボード</a>
+        <a href="history.html" class="nav-link text-emerald-400 font-medium">履歴</a>
       </nav>
 
       <div class="text-sm text-right leading-tight shrink-0">
@@ -51,26 +45,15 @@
 </header>
 
 <main class="py-8 sm:py-10">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <h2 class="text-2xl sm:text-3xl font-bold mb-6"><span class="gradient-text">ダッシュボード</span></h2>
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <h2 class="text-2xl sm:text-3xl font-bold mb-2"><span class="gradient-text">投票履歴</span></h2>
+    <p class="text-slate-300 text-sm mb-6">自分の賭けた履歴と、確定後の的中/ハズレを確認できます。</p>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
-      <div class="stats-card rounded-xl p-6">
-        <div class="text-slate-400 text-sm mb-1">総ポイント</div>
-        <div class="text-3xl font-bold text-emerald-400" id="totalPoints">-</div>
-      </div>
-      <div class="stats-card rounded-xl p-6">
-        <div class="text-slate-400 text-sm mb-1">参加イベント</div>
-        <div class="text-3xl font-bold text-emerald-400" id="participatedEvents">-</div>
-      </div>
-      <div class="stats-card rounded-xl p-6">
-        <div class="text-slate-400 text-sm mb-1">予想投稿数</div>
-        <div class="text-3xl font-bold text-emerald-400" id="predCount">-</div>
-      </div>
-    </div>
+    <div id="empty" class="hidden text-slate-400">まだ履歴がありません。</div>
+    <div id="list" class="space-y-4"></div>
   </div>
 </main>
 
-<script type="module" src="/src/dashboard.js"></script>
+<script type="module" src="/src/history.js"></script>
 </body>
 </html>

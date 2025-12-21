@@ -98,3 +98,7 @@ export function lmsrCostDelta(qArr, idx, dq, b) {
   after[idx] = Number(after[idx] || 0) + Number(dq || 0);
   return lmsrCost(after, b) - before;
 }
+
+export async function getMyHistory(deviceId) {
+  return api(`/api/users/${encodeURIComponent(deviceId)}?action=history`);
+}
