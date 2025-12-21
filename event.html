@@ -1,94 +1,145 @@
 <!doctype html>
 <html lang="ja">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover" />
-  <title>PredicTrade - Event</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-  <style>
-    html,body{height:100%}
-    body{font-family:Inter,sans-serif;background:#0f172a;color:#f1f5f9}
-    .card{background:linear-gradient(135deg,#1e293b,#334155);border:1px solid rgba(148,163,184,.2)}
-    .opt{background:rgba(30,41,59,.45);border:1px solid rgba(148,163,184,.2)}
-    .opt.selected{border-color:rgba(16,185,129,.85);box-shadow:0 0 0 2px rgba(16,185,129,.25) inset}
-    input,textarea,select{font-size:16px}
-  </style>
-</head>
-<body>
-<header class="bg-slate-900/95 border-b border-slate-700 sticky top-0 z-50">
-  <div class="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
-    <div class="flex items-center gap-2">
-      <div class="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center font-bold">P</div>
-      <div class="text-xl font-bold">PredicTrade</div>
-    </div>
-    <div class="text-sm text-right">
-      <div id="userName" class="font-semibold">-</div>
-      <div><span class="text-slate-400">ポイント:</span> <span id="userPoints" class="text-emerald-400 font-bold">-</span></div>
-    </div>
-  </div>
-</header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PredicTrade - Event</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body { background: #0b1220; }
+      .opt { background: rgba(15,23,42,.55); border: 1px solid rgba(148,163,184,.18); }
+      .opt.selected { border-color: rgba(16,185,129,.55); box-shadow: 0 0 0 2px rgba(16,185,129,.15) inset; }
+      .sheet-hidden { transform: translateY(110%); opacity: 0; pointer-events: none; }
+      .overlay-hidden { opacity: 0; pointer-events: none; }
+    </style>
+  </head>
 
-<main class="py-8">
-  <div class="max-w-3xl mx-auto px-4 space-y-5">
-    <div class="flex items-center gap-3 flex-wrap">
-      <button id="backBtn" class="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700">← 戻る</button>
-      <span id="eventMeta" class="text-slate-300 text-sm">-</span>
-      <span id="resolvedBadge" class="hidden px-3 py-1 rounded-full text-sm bg-emerald-500/20 text-emerald-200 border border-emerald-500/30">確定</span>
-    </div>
+  <body class="text-slate-100">
+    <header class="sticky top-0 z-30 bg-slate-950/60 backdrop-blur border-b border-slate-800">
+      <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center font-bold">P</div>
+          <div class="font-semibold text-lg">PredicTrade</div>
+        </div>
+        <div class="text-sm text-slate-300">
+          <span id="lang" class="mr-3">ja</span>
+          <span class="text-slate-400 mr-1">ポイント:</span>
+          <span id="userPoints" class="text-emerald-400 font-bold">-</span>
+        </div>
+      </div>
+    </header>
 
-    <div>
-      <h1 id="title" class="text-3xl font-bold">-</h1>
-      <p id="desc" class="text-slate-300 mt-2">-</p>
-    </div>
+    <main class="max-w-4xl mx-auto px-4 py-6">
+      <div class="flex items-center justify-between gap-3">
+        <button id="backBtn" class="px-4 py-2 rounded-xl bg-slate-900/50 border border-slate-700 hover:bg-slate-900">
+          ← 戻る
+        </button>
+        <div id="resolvedBadge" class="hidden px-3 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/40 text-emerald-200 text-sm"></div>
+      </div>
 
-    <section class="card rounded-xl p-5">
-      <h2 class="text-xl font-bold mb-3">どれが起きる？</h2>
+      <div class="mt-4 text-slate-400 text-sm" id="eventMeta">-</div>
+      <h1 class="mt-3 text-4xl font-bold" id="title">-</h1>
+      <p class="mt-2 text-slate-300" id="desc">-</p>
 
-      <div id="options" class="space-y-3"></div>
+      <section class="mt-6">
+        <h2 class="text-xl font-bold mb-3">どれが起きる？</h2>
+        <div id="options" class="space-y-3"></div>
+      </section>
 
-      <div class="mt-5">
-        <div class="rounded-xl bg-slate-900/25 border border-slate-700 p-4">
-          <div class="flex items-end justify-between gap-3">
-            <div class="flex-1">
-              <label class="block text-sm text-slate-300 mb-1">賭けるポイント</label>
-              <input id="betPoints" type="number" min="1" step="1" value="100"
-                class="w-full bg-slate-900/40 border border-slate-600 rounded-lg px-3 py-2 text-slate-100">
+      <div class="mt-4 text-sm text-amber-200" id="msg"></div>
+
+      <!-- 管理者パネル（ユーザーには見えない：ショートカットで出す） -->
+      <section id="adminPanel" class="hidden mt-10 p-4 rounded-2xl bg-slate-950/50 border border-slate-800">
+        <div class="flex items-center justify-between">
+          <div class="font-bold">管理者</div>
+          <button id="adminLogoutBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">ログアウト</button>
+        </div>
+
+        <div class="mt-4 flex gap-2 flex-wrap">
+          <button id="adminRefreshBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">参加者更新</button>
+          <button id="adminDeleteEventBtn" class="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-sm">イベント削除</button>
+        </div>
+
+        <div class="mt-4 space-y-2" id="adminParticipants"></div>
+      </section>
+    </main>
+
+    <!-- Bottom Sheet（Polymarket風） -->
+    <div id="sheetOverlay" class="fixed inset-0 z-40 bg-black/50 transition-opacity duration-200 overlay-hidden"></div>
+
+    <div
+      id="sheet"
+      class="fixed left-0 right-0 bottom-0 z-50 transition-all duration-200 sheet-hidden"
+      aria-hidden="true"
+    >
+      <div class="max-w-4xl mx-auto px-4 pb-4">
+        <div class="rounded-3xl bg-slate-950 border border-slate-800 overflow-hidden shadow-2xl">
+          <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+            <div class="text-sm text-slate-400">Buy</div>
+            <button id="sheetClose" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">閉じる</button>
+          </div>
+
+          <div class="px-4 py-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-sm font-bold">PT</div>
+              <div class="flex-1">
+                <div id="sheetOptionText" class="font-semibold">-</div>
+                <div class="text-sm text-slate-400">
+                  <span id="sheetSideLabel">Yes</span>
+                  <span class="mx-2">•</span>
+                  <span id="sheetProb">-</span>
+                </div>
+              </div>
             </div>
-            <button id="buyBtn"
-              class="shrink-0 px-5 py-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 font-semibold">
+
+            <div class="mt-5 flex items-center justify-between">
+              <button id="minusBtn" class="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 text-2xl">−</button>
+
+              <div class="text-center flex-1">
+                <div class="text-5xl font-extrabold tracking-tight">
+                  <span id="betBig">0</span><span class="text-slate-400 text-2xl ml-2">pt</span>
+                </div>
+                <input
+                  id="betPoints"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputmode="numeric"
+                  class="mt-3 w-full max-w-xs mx-auto px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-center text-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="0"
+                />
+                <div class="mt-2 text-sm text-slate-400">
+                  <span id="payout">-</span>
+                </div>
+              </div>
+
+              <button id="plusBtn" class="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 text-2xl">＋</button>
+            </div>
+
+            <div class="mt-4 flex gap-2 flex-wrap">
+              <button class="quickBtn px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm" data-add="10">+10</button>
+              <button class="quickBtn px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm" data-add="50">+50</button>
+              <button class="quickBtn px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm" data-add="100">+100</button>
+              <button id="maxBtn" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm">Max</button>
+            </div>
+
+            <button
+              id="tradeBtn"
+              class="mt-5 w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 font-bold text-lg"
+            >
               賭ける
             </button>
-          </div>
 
-          <div id="payout" class="mt-2 text-sm text-emerald-300">
-            選択肢を選ぶと、当たった時の目安が出ます
+            <div class="mt-2 text-xs text-slate-500">
+              By trading, you agree to the Terms of Use.
+            </div>
+
+            <div class="mt-3 text-sm text-amber-200" id="sheetMsg"></div>
           </div>
-          <div id="msg" class="text-sm text-slate-200 mt-2"></div>
         </div>
       </div>
+    </div>
 
-      <!-- 🔒 管理者パネル：通常ユーザーには非表示 -->
-      <div id="adminPanel" class="hidden mt-6 rounded-xl bg-slate-900/30 border border-slate-700 p-4 space-y-4">
-        <h3 class="text-lg font-bold">管理者パネル</h3>
-
-        <div class="flex gap-2 flex-wrap">
-          <button id="adminRefreshBtn" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600">参加者更新</button>
-          <button id="adminDeleteEventBtn" class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 font-semibold">イベント削除</button>
-          <button id="adminLogoutBtn" class="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700">ログアウト</button>
-        </div>
-        <div id="adminMsg" class="text-sm text-slate-200"></div>
-
-        <div>
-          <h4 class="font-semibold mb-2">参加者一覧</h4>
-          <div id="adminParticipants" class="space-y-2"></div>
-        </div>
-      </div>
-
-    </section>
-  </div>
-</main>
-
-<script type="module" src="/src/event.js"></script>
-</body>
+    <script type="module" src="/src/event.js"></script>
+  </body>
 </html>
