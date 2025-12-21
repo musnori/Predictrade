@@ -156,27 +156,33 @@ async function adminApi(path, opts = {}) {
 }
 
 async function loadParticipants() {
-  const out = await adminApi(`/api/admin/events/${ev.id}/participants`);
+  const out = await adminApi(`/api/admin/users?action=participants&eventId=${ev.id}`);
   const wrap = document.getElementById("adminParticipants");
   wrap.innerHTML = "";
-  out.participants.forEach(p => {
+
+  (out.participants || []).forEach((p) => {
     const row = document.createElement("div");
-    row.className = "flex items-center justify-between gap-2 bg-slate-900/40 border border-slate-700 rounded-lg px-3 py-2";
+    row.className =
+      "flex items-center justify-between gap-2 bg-slate-900/40 border border-slate-700 rounded-lg px-3 py-2";
     row.innerHTML = `
       <div>
         <div class="font-semibold">${p.name}</div>
-        <div class="text-xs text-slate-400">${p.deviceId} / shares:${Number(p.totalShares).toFixed(2)}</div>
+        <div class="text-xs text-slate-400">${p.deviceId} / shares:${Number(p.totalShares || 0).toFixed(2)}</div>
       </div>
       <button class="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-sm">削除</button>
     `;
     row.querySelector("button").onclick = async () => {
       if (!confirm(`${p.name} を削除しますか？`)) return;
-      await adminApi(`/api/admin/events/${ev.id}/participants/${encodeURIComponent(p.deviceId)}`, { method: "POST" });
+      await adminApi(
+        `/api/admin/users?action=removeParticipant&eventId=${ev.id}&deviceId=${encodeURIComponent(p.deviceId)}`,
+        { method: "POST" }
+      );
       await loadParticipants();
     };
     wrap.appendChild(row);
   });
 }
+
 
 /* ================= 起動 ================= */
 
@@ -231,7 +237,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!code) return;
       setAdminKey(code.trim());
       try {
-        await adminApi(`/api/admin/events/${ev.id}/participants`);
+        await adminApi(`/api/admin/users?action=participants&eventId=${ev.id}`);
         showAdminPanel(true);
         alert("管理者モードON");
         await loadParticipants();
@@ -246,8 +252,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   document.getElementById("adminDeleteEventBtn").onclick = async () => {
     if (!confirm("イベントを削除しますか？")) return;
-    await adminApi(`/api/admin/events/${ev.id}/delete`, { method: "POST" });
-    alert("削除しました");
+    await adminApi(`/api/admin/users?action=deleteEvent&eventId=${ev.id}`, { method: "POST" });
     location.href = "index.html";
   };
 
