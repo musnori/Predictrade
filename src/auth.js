@@ -68,11 +68,12 @@ function showNameModal() {
 
 function renderHeader(user, fallbackName) {
   const pointsEl = document.getElementById("userPoints");
-  if (pointsEl) pointsEl.textContent = Number(user?.points || 0).toLocaleString();
+  if (pointsEl) pointsEl.textContent = Math.floor(Number(user?.points || 0)).toLocaleString();
 
   const nameEl = document.getElementById("userName");
   if (nameEl) nameEl.textContent = String(user?.name || fallbackName || "");
 }
+
 
 export async function initAuthAndRender() {
   const deviceId = getOrCreateDeviceId();
