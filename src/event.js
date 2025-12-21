@@ -79,10 +79,7 @@ function showSheet(show) {
   ov.classList.toggle("overlay-hidden", !show);
   sh.classList.toggle("sheet-hidden", !show);
   sh.setAttribute("aria-hidden", String(!show));
-  if (show) {
-    // フォーカス
-    setTimeout(() => betInputEl()?.focus(), 50);
-  }
+  if (show) setTimeout(() => betInputEl()?.focus(), 50);
 }
 
 function getUserPoints() {
@@ -152,6 +149,8 @@ function renderOptions() {
     const card = document.createElement("div");
     card.className = "opt rounded-2xl p-4 cursor-pointer";
     card.addEventListener("click", () => {
+      if (ev.status === "resolved") return; // 確定済みなら賭けさせない
+
       selectedOptionId = o.id;
       document.querySelectorAll(".opt").forEach(x => x.classList.remove("selected"));
       card.classList.add("selected");
@@ -183,6 +182,7 @@ async function refresh() {
   ev = await getEventById(ev.id);
   renderMeta();
   renderOptions();
+  renderAdminResolveSelect();
 }
 
 /* ================= 管理者 ================= */
@@ -238,6 +238,49 @@ async function loadParticipants() {
   });
 }
 
+/* ✅ 管理者：結果確定（分配）UI */
+
+function renderAdminResolveSelect() {
+  const sel = document.getElementById("adminResolveSelect");
+  const msg = document.getElementById("adminResolveMsg");
+  const btn = document.getElementById("adminResolveBtn");
+  if (!sel || !btn) return;
+
+  sel.innerHTML = "";
+  (ev.options || []).forEach((o) => {
+    const op = document.createElement("option");
+    op.value = String(o.id);
+    op.textContent = o.text;
+    sel.appendChild(op);
+  });
+
+  // resolvedならUIを無効化
+  if (ev.status === "resolved") {
+    btn.disabled = true;
+    btn.classList.add("opacity-50", "cursor-not-allowed");
+    sel.disabled = true;
+    sel.classList.add("opacity-50", "cursor-not-allowed");
+    const ans = (ev.options || []).find(o => o.id === ev.resultOptionId)?.text ?? "-";
+    if (msg) msg.textContent = `確定済み：${ans}`;
+  } else {
+    btn.disabled = false;
+    btn.classList.remove("opacity-50", "cursor-not-allowed");
+    sel.disabled = false;
+    sel.classList.remove("opacity-50", "cursor-not-allowed");
+    if (msg) msg.textContent = "";
+  }
+}
+
+async function resolveAndPayout(resultOptionId) {
+  // ここは「api/events/[id]/resolve.js」に投げる（分配までやってくれる）
+  const out = await adminApi(`/api/events/${ev.id}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resultOptionId }),
+  });
+  return out;
+}
+
 /* ================= 起動 ================= */
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -252,6 +295,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   ev = await getEventById(id);
   renderMeta();
   renderOptions();
+  renderAdminResolveSelect();
 
   // Sheet close actions
   overlayEl().addEventListener("click", () => showSheet(false));
@@ -324,10 +368,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!code) return;
       setAdminKey(code.trim());
       try {
+        // これが通れば管理者
         await adminApi(`/api/admin/users?action=participants&eventId=${ev.id}`);
         showAdminPanel(true);
         alert("管理者モードON");
         await loadParticipants();
+        renderAdminResolveSelect();
       } catch (err) {
         console.error(err);
         clearAdminKey();
@@ -336,14 +382,43 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  // 管理者：参加者更新
   document.getElementById("adminRefreshBtn").onclick = loadParticipants;
 
+  // 管理者：イベント削除（既存のadmin/usersルート）
   document.getElementById("adminDeleteEventBtn").onclick = async () => {
     if (!confirm("イベントを削除しますか？")) return;
     await adminApi(`/api/admin/users?action=deleteEvent&eventId=${ev.id}`, { method: "POST" });
     location.href = "index.html";
   };
 
+  // ✅ 管理者：結果確定（分配）
+  document.getElementById("adminResolveBtn").onclick = async () => {
+    const msg = document.getElementById("adminResolveMsg");
+    msg.textContent = "";
+    try {
+      if (ev.status === "resolved") throw new Error("すでに確定済みです");
+
+      const sel = document.getElementById("adminResolveSelect");
+      const resultOptionId = Number(sel.value);
+      if (!Number.isFinite(resultOptionId)) throw new Error("結果が不正です");
+
+      const ansText = (ev.options || []).find(o => o.id === resultOptionId)?.text ?? "-";
+      if (!confirm(`結果を「${ansText}」で確定して、分配しますか？（取り消し不可）`)) return;
+
+      const out = await resolveAndPayout(resultOptionId);
+
+      // 最新反映
+      await refresh();
+      await loadParticipants();
+
+      msg.textContent = `確定しました：${ansText}（支払い件数: ${out.count ?? out.payouts?.length ?? 0}）`;
+    } catch (e) {
+      msg.textContent = String(e?.message || e);
+    }
+  };
+
+  // 管理者ログアウト
   document.getElementById("adminLogoutBtn").onclick = () => {
     clearAdminKey();
     showAdminPanel(false);
