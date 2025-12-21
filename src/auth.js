@@ -1,6 +1,6 @@
 // src/auth.js
 const LS_DEVICE = "predictrade.deviceId.v1";
-const SS_NAME = "predictrade.sessionName.v1";
+const LS_NAME = "predictrade.name.v1";
 
 function getOrCreateDeviceId() {
   let id = localStorage.getItem(LS_DEVICE);
@@ -38,7 +38,7 @@ function showNameModal() {
           placeholder="ニックネーム（20文字まで）" />
         <button id="pt-join"
           style="margin-top:12px;width:100%;padding:12px;border-radius:12px;background:#10b981;color:white;font-weight:700;border:none;cursor:pointer;">
-          ログイン
+          はじめる
         </button>
         <div id="pt-err" style="margin-top:10px;font-size:12px;color:#fca5a5;min-height:16px;"></div>
       </div>
@@ -66,52 +66,59 @@ function showNameModal() {
   });
 }
 
-function renderHeader(user) {
+function renderHeader(user, fallbackName) {
   const pointsEl = document.getElementById("userPoints");
   if (pointsEl) pointsEl.textContent = Number(user?.points || 0).toLocaleString();
 
   const nameEl = document.getElementById("userName");
-  if (nameEl) nameEl.textContent = String(user?.name || "");
+  if (nameEl) nameEl.textContent = String(user?.name || fallbackName || "");
 }
 
-async function loginFlow() {
+export async function initAuthAndRender() {
   const deviceId = getOrCreateDeviceId();
 
-  // ✅ 要望どおり：開いたら必ず入力させる
-  const name = await showNameModal();
-  sessionStorage.setItem(SS_NAME, name);
+  // ✅ 初回だけ入力（以後はlocalStorageから）
+  let name = localStorage.getItem(LS_NAME);
+  if (!name) {
+    name = await showNameModal();
+    localStorage.setItem(LS_NAME, name);
+  }
 
   const data = await upsertUserOnServer(deviceId, name);
-  const user = data?.user ? { ...data.user } : { name, points: 0 };
-  user.points = Number(user.points || 0);
-  user.name = String(user.name || name);
 
-  renderHeader(user);
-  return { deviceId, user, name: user.name, points: user.points };
+  // サーバが調整した名前を正にする（重複対応など）
+  const serverName = String(data?.user?.name ?? name).trim().slice(0, 20);
+  if (serverName && serverName !== name) {
+    localStorage.setItem(LS_NAME, serverName);
+    name = serverName;
+  }
+
+  renderHeader(data?.user, name);
+
+  return {
+    deviceId,
+    name,
+    points: Number(data?.user?.points || 0),
+    user: data?.user,
+  };
 }
 
-// ✅ main.js / event.js / dashboard.js が期待している名前でexport
-export async function initAuthAndRender() {
-  return loginFlow();
-}
-
-// ✅ userMenu.js が期待しているexport（互換）
+// ✅ userMenu互換（任意だけど残しておくと便利）
 export async function rename() {
   const deviceId = getOrCreateDeviceId();
   const name = await showNameModal();
-  sessionStorage.setItem(SS_NAME, name);
+  localStorage.setItem(LS_NAME, name);
 
   const data = await upsertUserOnServer(deviceId, name);
-  const user = data?.user ? { ...data.user } : { name, points: 0 };
-  user.points = Number(user.points || 0);
-  user.name = String(user.name || name);
+  const serverName = String(data?.user?.name ?? name).trim().slice(0, 20);
+  if (serverName && serverName !== name) localStorage.setItem(LS_NAME, serverName);
 
-  renderHeader(user);
-  return user;
+  renderHeader(data?.user, serverName);
+  return data?.user;
 }
 
 export function logout() {
-  // 各自スマホ運用：deviceIdは消さない（ポイント紐づけ維持）
-  sessionStorage.removeItem(SS_NAME);
+  // 各自スマホ：deviceIdは維持、名前だけ消して次回入力させる
+  localStorage.removeItem(LS_NAME);
   location.reload();
 }
