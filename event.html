@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover" />
   <title>PredicTrade - Event</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     html,body{height:100%}
@@ -14,11 +13,13 @@
     .opt{background:rgba(30,41,59,.45);border:1px solid rgba(148,163,184,.2)}
     .opt.selected{border-color:rgba(16,185,129,.85);box-shadow:0 0 0 2px rgba(16,185,129,.25) inset}
     input,textarea,select{font-size:16px}
+    details > summary { cursor:pointer; list-style:none; }
+    details > summary::-webkit-details-marker { display:none; }
   </style>
 </head>
 <body>
 <header class="bg-slate-900/95 border-b border-slate-700 sticky top-0 z-50">
-  <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+  <div class="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
     <div class="flex items-center gap-2">
       <div class="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center font-bold">P</div>
       <div class="text-xl font-bold">PredicTrade</div>
@@ -31,7 +32,7 @@
 </header>
 
 <main class="py-8">
-  <div class="max-w-6xl mx-auto px-4 space-y-6">
+  <div class="max-w-3xl mx-auto px-4 space-y-5">
     <div class="flex items-center gap-3 flex-wrap">
       <button id="backBtn" class="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700">← 戻る</button>
       <span id="eventMeta" class="text-slate-300 text-sm">-</span>
@@ -41,57 +42,62 @@
     <div>
       <h1 id="title" class="text-3xl font-bold">-</h1>
       <p id="desc" class="text-slate-300 mt-2">-</p>
-      <div class="text-sm text-slate-300 mt-3">流動性 b: <span id="bVal" class="font-semibold">-</span></div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <section class="card rounded-xl p-6">
-        <h2 class="text-xl font-bold mb-4">マーケット（価格＝確率）</h2>
+    <section class="card rounded-xl p-5">
+      <h2 class="text-xl font-bold mb-3">どれが起きる？</h2>
 
-        <div id="options" class="space-y-3 mb-6"></div>
+      <div id="options" class="space-y-3"></div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-sm text-slate-300 mb-1">購入するシェア数</label>
-            <input id="shares" type="number" min="0.1" step="0.1" value="10" class="w-full bg-slate-900/40 border border-slate-600 rounded-lg px-3 py-2 text-slate-100">
+      <div class="mt-5 grid grid-cols-1 gap-3">
+        <div class="rounded-xl bg-slate-900/25 border border-slate-700 p-4">
+          <div class="flex items-end justify-between gap-3">
+            <div class="flex-1">
+              <label class="block text-sm text-slate-300 mb-1">賭けるポイント</label>
+              <input id="betPoints" type="number" min="1" step="1" value="100"
+                class="w-full bg-slate-900/40 border border-slate-600 rounded-lg px-3 py-2 text-slate-100">
+            </div>
+            <button id="buyBtn"
+              class="shrink-0 px-5 py-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 font-semibold">
+              賭ける
+            </button>
           </div>
-          <div>
-            <label class="block text-sm text-slate-300 mb-1">概算コスト</label>
-            <div id="estCost" class="w-full bg-slate-900/20 border border-slate-700 rounded-lg px-3 py-2 text-slate-100">-</div>
-          </div>
+
+          <div id="payout" class="mt-2 text-sm text-emerald-300">選択肢を選ぶと、当たった時の目安が出ます</div>
+          <div id="msg" class="text-sm text-slate-200 mt-2"></div>
         </div>
 
-        <button id="buyBtn" class="mt-4 w-full bg-emerald-500 hover:bg-emerald-600 rounded-lg py-3 font-semibold">シェアを購入</button>
-        <div id="msg" class="text-sm text-slate-200 mt-2"></div>
+        <!-- 上級者・追加・管理者は折りたたみ -->
+        <details class="rounded-xl bg-slate-900/20 border border-slate-700 p-4">
+          <summary class="flex items-center justify-between">
+            <span class="font-semibold text-slate-200">詳細（選択肢追加・管理者確定）</span>
+            <span class="text-slate-400 text-sm">開く</span>
+          </summary>
 
-        <div class="mt-8 border-t border-slate-600/60 pt-6">
-          <h3 class="text-lg font-bold mb-2">選択肢を追加（ユーザー）</h3>
-          <div class="flex gap-2">
-            <input id="newOpt" class="flex-1 bg-slate-900/40 border border-slate-600 rounded-lg px-3 py-2 text-slate-100" placeholder="例：生成AIエージェント">
-            <button id="addOptBtn" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600">追加</button>
+          <div class="mt-4 space-y-6">
+            <div class="border-t border-slate-600/60 pt-4">
+              <h3 class="text-lg font-bold mb-2">選択肢を追加（ユーザー）</h3>
+              <div class="flex gap-2">
+                <input id="newOpt" class="flex-1 bg-slate-900/40 border border-slate-600 rounded-lg px-3 py-2 text-slate-100" placeholder="例：生成AIエージェント">
+                <button id="addOptBtn" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600">追加</button>
+              </div>
+              <div id="addOptMsg" class="text-sm text-slate-200 mt-2"></div>
+            </div>
+
+            <div class="border-t border-slate-600/60 pt-4">
+              <h3 class="text-lg font-bold mb-2">結果確定（管理者）</h3>
+              <p class="text-sm text-slate-300 mb-2">ADMIN_KEYを入力して確定できます（デモ用）。</p>
+              <div class="flex gap-2 flex-wrap">
+                <input id="adminKey" class="flex-1 min-w-[180px] bg-slate-900/40 border border-slate-600 rounded-lg px-3 py-2 text-slate-100" placeholder="ADMIN_KEY">
+                <select id="resolveSelect" class="bg-slate-900/40 border border-slate-600 rounded-lg px-3 py-2 text-slate-100"></select>
+                <button id="resolveBtn" class="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 font-semibold">確定</button>
+              </div>
+              <div id="resolveMsg" class="text-sm text-slate-200 mt-2"></div>
+            </div>
           </div>
-          <div id="addOptMsg" class="text-sm text-slate-200 mt-2"></div>
-        </div>
-
-        <div class="mt-8 border-t border-slate-600/60 pt-6">
-          <h3 class="text-lg font-bold mb-2">結果確定（管理者）</h3>
-          <p class="text-sm text-slate-300 mb-2">ADMIN_KEYを入力して確定できます（デモ用）。</p>
-          <div class="flex gap-2">
-            <input id="adminKey" class="flex-1 bg-slate-900/40 border border-slate-600 rounded-lg px-3 py-2 text-slate-100" placeholder="ADMIN_KEY">
-            <select id="resolveSelect" class="bg-slate-900/40 border border-slate-600 rounded-lg px-3 py-2 text-slate-100"></select>
-            <button id="resolveBtn" class="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 font-semibold">確定</button>
-          </div>
-          <div id="resolveMsg" class="text-sm text-slate-200 mt-2"></div>
-        </div>
-      </section>
-
-      <section class="card rounded-xl p-6">
-        <h2 class="text-xl font-bold mb-4">価格推移</h2>
-        <div class="h-[380px] bg-slate-900/25 border border-slate-700 rounded-xl p-3">
-          <canvas id="chart"></canvas>
-        </div>
-      </section>
-    </div>
+        </details>
+      </div>
+    </section>
   </div>
 </main>
 

@@ -12,20 +12,15 @@ import {
 let auth;
 let ev;
 let selectedOptionId = null;
-let chart = null;
 
 function idFromQuery() {
   return new URLSearchParams(location.search).get("id");
 }
 
-function fmt(n, d = 3) {
-  const x = Number(n || 0);
-  return Number.isFinite(x) ? x.toFixed(d) : "-";
-}
-
 function updateResolvedBadge() {
   const badge = document.getElementById("resolvedBadge");
   if (!badge) return;
+
   if (ev.status === "resolved") {
     badge.classList.remove("hidden");
     const ans = (ev.options || []).find((o) => o.id === ev.resultOptionId)?.text ?? "-";
@@ -41,7 +36,6 @@ function renderMeta() {
     `${end.toLocaleString("ja-JP")}（${timeRemaining(ev.endDate)}） / ${ev.category}`;
   document.getElementById("title").textContent = ev.title ?? "-";
   document.getElementById("desc").textContent = ev.description ?? "-";
-  document.getElementById("bVal").textContent = String(ev.liquidityB ?? "-");
 }
 
 function calcPrices() {
@@ -49,107 +43,117 @@ function calcPrices() {
   return lmsrPrices(q, ev.liquidityB || 50);
 }
 
+function getSelectedIndex() {
+  return (ev.options || []).findIndex((o) => o.id === selectedOptionId);
+}
+
+// 「betポイント」を使い切る shares を逆算（cost(shares)=bet）
+function sharesForBudget(q, idx, bet, b) {
+  if (bet <= 0) return 0;
+
+  let lo = 0;
+  let hi = 1;
+
+  // hi を指数的に増やし、cost >= bet となる上限を探す
+  for (let k = 0; k < 30; k++) {
+    const c = lmsrCostDelta(q, idx, hi, b);
+    if (c >= bet) break;
+    hi *= 2;
+  }
+
+  // 二分探索
+  for (let it = 0; it < 40; it++) {
+    const mid = (lo + hi) / 2;
+    const c = lmsrCostDelta(q, idx, mid, b);
+    if (c >= bet) hi = mid;
+    else lo = mid;
+  }
+  return hi;
+}
+
+function updateBetUI() {
+  const payout = document.getElementById("payout");
+  if (!payout) return;
+
+  if (!selectedOptionId) {
+    payout.textContent = "選択肢を選んでください";
+    return;
+  }
+
+  const bet = Number(document.getElementById("betPoints")?.value || 0);
+  if (!Number.isFinite(bet) || bet <= 0) {
+    payout.textContent = "-";
+    return;
+  }
+
+  const idx = getSelectedIndex();
+  const q = (ev.options || []).map((o) => Number(o.q || 0));
+  const b = ev.liquidityB || 50;
+
+  const ps = lmsrPrices(q, b);
+  const pRaw = ps[idx] ?? 0;
+  const p = Math.min(0.999999, Math.max(0.000001, pRaw)); // ゼロ除算対策
+
+  // 目安：当たったら（bet/p）で戻るイメージ → 純増 = bet/p - bet
+  const gross = bet / p;
+  const profit = Math.max(0, gross - bet);
+
+  payout.textContent = `当たると +${Math.round(profit).toLocaleString()} pt（目安）`;
+}
+
 function renderOptions() {
   const ps = calcPrices();
   const wrap = document.getElementById("options");
   wrap.innerHTML = "";
 
-  // resolve dropdown
+  // resolve dropdown（管理者用）
   const sel = document.getElementById("resolveSelect");
-  sel.innerHTML = "";
-  (ev.options || []).forEach((o) => {
-    const op = document.createElement("option");
-    op.value = String(o.id);
-    op.textContent = o.text;
-    sel.appendChild(op);
-  });
+  if (sel) {
+    sel.innerHTML = "";
+    (ev.options || []).forEach((o) => {
+      const op = document.createElement("option");
+      op.value = String(o.id);
+      op.textContent = o.text;
+      sel.appendChild(op);
+    });
+  }
 
   (ev.options || []).forEach((o, i) => {
+    const p = ps[i];
+    const pct = Math.round(p * 100);
+
     const card = document.createElement("div");
     card.className = "opt rounded-lg p-4 cursor-pointer";
     card.addEventListener("click", () => {
       selectedOptionId = o.id;
       document.querySelectorAll(".opt").forEach((x) => x.classList.remove("selected"));
       card.classList.add("selected");
-      updateEstimate();
+      updateBetUI();
     });
 
-    const p = ps[i];
     card.innerHTML = `
       <div class="flex items-center justify-between gap-3">
         <div class="text-slate-100 font-medium">${o.text}</div>
-        <div class="text-right">
-          <div class="text-emerald-400 font-bold">${Math.round(p * 100)}%</div>
-          <div class="text-slate-400 text-xs">q=${fmt(o.q, 1)}</div>
-        </div>
+        <div class="text-emerald-400 font-bold text-lg">${pct}%</div>
       </div>
       <div class="mt-3">
         <div class="w-full bg-slate-600 rounded-full h-2">
-          <div class="h-2 rounded-full bg-emerald-500" style="width:${Math.round(p * 100)}%"></div>
+          <div class="h-2 rounded-full bg-emerald-500" style="width:${pct}%"></div>
         </div>
       </div>
-      <div class="text-xs text-slate-400 mt-2">追加者: ${o.createdBy ?? "-"} / ${o.createdAt ? new Date(o.createdAt).toLocaleString("ja-JP") : "-"}</div>
     `;
+
     wrap.appendChild(card);
   });
 
   updateResolvedBadge();
-  updateEstimate();
-}
-
-function updateEstimate() {
-  const est = document.getElementById("estCost");
-  if (!selectedOptionId) {
-    est.textContent = "選択肢を選択してください";
-    return;
-  }
-  const sh = Number(document.getElementById("shares").value || 0);
-  if (!Number.isFinite(sh) || sh <= 0) {
-    est.textContent = "-";
-    return;
-  }
-  const idx = (ev.options || []).findIndex((o) => o.id === selectedOptionId);
-  const q = (ev.options || []).map((o) => Number(o.q || 0));
-  const cost = lmsrCostDelta(q, idx, sh, ev.liquidityB || 50);
-  est.textContent = `${fmt(cost, 3)} pt（概算）`;
-}
-
-function renderChart() {
-  const canvas = document.getElementById("chart");
-  if (!canvas || !window.Chart) return;
-
-  const snaps = Array.isArray(ev.snapshots) ? ev.snapshots : [];
-  const labels = snaps.map((s) => {
-    const dt = new Date(s.t);
-    return `${dt.getHours()}:${String(dt.getMinutes()).padStart(2, "0")}`;
-  });
-
-  const datasets = (ev.options || []).map((o) => {
-    const data = snaps.map((s) => (s.prices?.[o.id] ?? 0) * 100);
-    return { label: o.text, data, tension: 0.25 };
-  });
-
-  if (chart) chart.destroy();
-  chart = new Chart(canvas, {
-    type: "line",
-    data: { labels, datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: "#f1f5f9" } } },
-      scales: {
-        x: { ticks: { color: "#cbd5e1" }, grid: { color: "rgba(148,163,184,.15)" } },
-        y: { ticks: { color: "#cbd5e1", callback: (v) => `${v}%` }, grid: { color: "rgba(148,163,184,.15)" } },
-      },
-    },
-  });
+  updateBetUI();
 }
 
 async function refresh() {
   ev = await getEventById(ev.id);
   renderMeta();
   renderOptions();
-  renderChart();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -169,9 +173,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   ev = await getEventById(id);
   renderMeta();
   renderOptions();
-  renderChart();
 
-  document.getElementById("shares")?.addEventListener("input", updateEstimate);
+  document.getElementById("betPoints")?.addEventListener("input", updateBetUI);
 
   document.getElementById("buyBtn")?.addEventListener("click", async () => {
     const msg = document.getElementById("msg");
@@ -181,8 +184,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (ev.status === "resolved") throw new Error("確定済みです");
       if (!selectedOptionId) throw new Error("選択肢を選んでください");
 
-      const shares = Number(document.getElementById("shares").value || 0);
-      if (!Number.isFinite(shares) || shares <= 0) throw new Error("シェア数が不正です");
+      const bet = Number(document.getElementById("betPoints")?.value || 0);
+      if (!Number.isFinite(bet) || bet <= 0) throw new Error("ポイントが不正です");
+
+      const idx = getSelectedIndex();
+      if (idx < 0) throw new Error("選択肢が見つかりません");
+
+      const q = (ev.options || []).map((o) => Number(o.q || 0));
+      const b = ev.liquidityB || 50;
+
+      // bet を使い切る shares を逆算して購入
+      const shares = sharesForBudget(q, idx, bet, b);
+      if (!Number.isFinite(shares) || shares <= 0) throw new Error("購入量が不正です");
 
       const out = await buyShares({
         eventId: ev.id,
@@ -193,9 +206,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       document.getElementById("userPoints").textContent = out.user.points.toLocaleString();
       ev = out.event;
-      msg.textContent = "購入しました！";
+      msg.textContent = "賭けました！";
       renderOptions();
-      renderChart();
     } catch (e) {
       msg.textContent = String(e?.message || e);
     }
@@ -209,12 +221,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       const text = document.getElementById("newOpt").value.trim();
       if (!text) throw new Error("追加するテキストを入力してください");
 
+      // 同名の選択肢を追加できない（UI側ガード）
+      const norm = (s) => s.trim().toLowerCase();
+      const exists = (ev.options || []).some((o) => norm(o.text) === norm(text));
+      if (exists) throw new Error("同じ選択肢は追加できません");
+
       const out = await addOption({ eventId: ev.id, deviceId: auth.deviceId, text });
       ev = out.event;
       document.getElementById("newOpt").value = "";
       msg.textContent = "追加しました！";
       renderOptions();
-      renderChart();
     } catch (e) {
       msg.textContent = String(e?.message || e);
     }
