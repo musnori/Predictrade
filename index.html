@@ -52,13 +52,34 @@
         <a href="history.html" class="nav-link text-slate-300 hover:text-emerald-400">履歴</a>
       </nav>
 
-      <div class="text-sm text-right leading-tight shrink-0">
-        <div class="text-slate-200 font-semibold" id="userName">-</div>
-        <div>
-          <span class="text-slate-400">ポイント:</span>
-          <span class="text-emerald-400 font-bold" id="userPoints">-</span>
-        </div>
-      </div>
+      <div class="relative shrink-0">
+  <!-- 右上：タップでメニュー -->
+  <button
+    id="userMenuBtn"
+    class="text-sm text-right leading-tight px-2 py-1 rounded-lg hover:bg-slate-800/60 active:bg-slate-800/80"
+    aria-haspopup="menu"
+    aria-expanded="false"
+  >
+    <div class="text-slate-200 font-semibold" id="userName">-</div>
+    <div>
+      <span class="text-slate-400">ポイント:</span>
+      <span class="text-emerald-400 font-bold" id="userPoints">-</span>
+    </div>
+  </button>
+
+  <!-- ドロップダウン -->
+  <div
+    id="userMenu"
+    class="hidden absolute right-0 mt-2 w-44 rounded-xl bg-slate-900/95 border border-slate-700 shadow-2xl backdrop-blur z-[999]"
+    role="menu"
+  >
+    <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">イベント</a>
+    <a href="create.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">作成</a>
+    <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">ダッシュボード</a>
+    <a href="history.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">履歴</a>
+  </div>
+</div>
+
     </div>
   </div>
 </header>
@@ -93,5 +114,37 @@
 </main>
 
 <script type="module" src="/src/main.js"></script>
+<script>
+  (function () {
+    const btn = document.getElementById("userMenuBtn");
+    const menu = document.getElementById("userMenu");
+    if (!btn || !menu) return;
+
+    const close = () => {
+      menu.classList.add("hidden");
+      btn.setAttribute("aria-expanded", "false");
+    };
+    const toggle = () => {
+      const open = menu.classList.contains("hidden");
+      if (open) {
+        menu.classList.remove("hidden");
+        btn.setAttribute("aria-expanded", "true");
+      } else {
+        close();
+      }
+    };
+
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggle();
+    });
+
+    document.addEventListener("click", close);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") close();
+    });
+  })();
+</script>
+
 </body>
 </html>
