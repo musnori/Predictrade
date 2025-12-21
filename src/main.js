@@ -57,7 +57,7 @@ async function render() {
       <p class="text-slate-300 text-sm mb-4 line-clamp-2">${event.description}</p>
       <div class="flex items-center justify-between text-sm text-slate-400">
         <div>参加者: <span class="text-slate-200">${event.participants || 0}</span></div>
-        <div>プール: <span class="text-slate-200">${Number(event.prizePool || 0).toLocaleString()}</span>pt</div>
+        <div>プール: <span class="text-slate-200">${Number(event.poolPoints || 0).toLocaleString()}</span>pt</div>
       </div>
     `;
 
