@@ -20,10 +20,10 @@ export default async function handler(req, res) {
     const { deviceId, text } = req.body || {};
     if (!deviceId) return res.status(400).send("deviceId required");
 
-    const cleaned = sanitizeText ? sanitizeText(text) : String(text || "").trim();
+    const cleaned = sanitizeText(text);
     if (!cleaned) return res.status(400).send("text required");
 
-    // ✅ サーバ側で重複禁止
+    // ✅ 重複チェック
     const t = normText(cleaned);
     const exists = (ev.options || []).some((o) => normText(o.text) === t);
     if (exists) return res.status(400).send("duplicate option");
