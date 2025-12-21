@@ -61,7 +61,6 @@
     role="menu"
   >
     <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">イベント</a>
-    <a href="create.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">作成</a>
     <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">ダッシュボード</a>
     <a href="history.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">履歴</a>
   </div>
@@ -93,5 +92,39 @@
 </main>
 
 <script type="module" src="/src/dashboard.js"></script>
+
+<script>
+  (function () {
+    const btn = document.getElementById("userMenuBtn");
+    const menu = document.getElementById("userMenu");
+    if (!btn || !menu) return;
+
+    const close = () => {
+      menu.classList.add("hidden");
+      btn.setAttribute("aria-expanded", "false");
+    };
+    const toggle = () => {
+      const open = menu.classList.contains("hidden");
+      if (open) {
+        menu.classList.remove("hidden");
+        btn.setAttribute("aria-expanded", "true");
+      } else {
+        close();
+      }
+    };
+
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggle();
+    });
+
+    document.addEventListener("click", close);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") close();
+    });
+  })();
+</script>
+
+
 </body>
 </html>
