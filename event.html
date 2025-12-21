@@ -21,10 +21,32 @@
           <div class="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center font-bold">P</div>
           <div class="font-semibold text-lg">PredicTrade</div>
         </div>
-        <div class="text-sm text-slate-300">
-          <span id="lang" class="mr-3">ja</span>
-          <span class="text-slate-400 mr-1">ポイント:</span>
-          <span id="userPoints" class="text-emerald-400 font-bold">-</span>
+
+        <!-- ✅ 右上：タップでメニュー -->
+        <div class="relative shrink-0 text-sm">
+          <button
+            id="userMenuBtn"
+            class="text-right leading-tight px-2 py-1 rounded-lg hover:bg-slate-900/50 active:bg-slate-900/70"
+            aria-haspopup="menu"
+            aria-expanded="false"
+          >
+            <div class="text-slate-200 font-semibold" id="userName">-</div>
+            <div class="text-slate-300">
+              <span id="lang" class="mr-2 text-slate-400">ja</span>
+              <span class="text-slate-400">ポイント:</span>
+              <span id="userPoints" class="text-emerald-400 font-bold">-</span>
+            </div>
+          </button>
+
+          <div
+            id="userMenu"
+            class="hidden absolute right-0 mt-2 w-44 rounded-xl bg-slate-950/95 border border-slate-800 shadow-2xl backdrop-blur z-[999]"
+            role="menu"
+          >
+            <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">イベント</a>
+            <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">ダッシュボード</a>
+            <a href="history.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">履歴</a>
+          </div>
         </div>
       </div>
     </header>
@@ -55,28 +77,28 @@
           <button id="adminLogoutBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">ログアウト</button>
         </div>
 
-        <!-- ✅ 結果確定（分配） -->
-        <div class="mt-4 p-3 rounded-xl bg-slate-900/40 border border-slate-800">
-          <div class="font-semibold">結果確定（分配）</div>
-          <div class="mt-2 text-sm text-slate-400">
-            勝ちの選択肢を指定して確定すると、勝者に自動でポイント分配します。
-          </div>
-
-          <div class="mt-3 flex flex-wrap items-center gap-2">
-            <select id="adminResolveSelect" class="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm">
-              <!-- JSで選択肢を流し込む -->
-            </select>
-            <button id="adminResolveBtn" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold">
-              この結果で確定
-            </button>
-          </div>
-
-          <div class="mt-2 text-sm text-amber-200" id="adminResolveMsg"></div>
-        </div>
-
         <div class="mt-4 flex gap-2 flex-wrap">
           <button id="adminRefreshBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">参加者更新</button>
           <button id="adminDeleteEventBtn" class="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-sm">イベント削除</button>
+        </div>
+
+        <!-- ✅ 結果確定（分配）UI -->
+        <div class="mt-5 p-3 rounded-xl bg-slate-900/40 border border-slate-700">
+          <div class="font-semibold mb-2">結果確定（分配）</div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <select
+              id="adminResolveSelect"
+              class="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100"
+            ></select>
+            <button
+              id="adminResolveBtn"
+              class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold"
+            >
+              結果を確定して分配
+            </button>
+          </div>
+          <div id="adminResolveMsg" class="mt-2 text-sm text-amber-200"></div>
+          <div class="mt-2 text-xs text-slate-500">※取り消し不可（確定後は賭けられません）</div>
         </div>
 
         <div class="mt-4 space-y-2" id="adminParticipants"></div>
@@ -86,11 +108,7 @@
     <!-- Bottom Sheet（Polymarket風） -->
     <div id="sheetOverlay" class="fixed inset-0 z-40 bg-black/50 transition-opacity duration-200 overlay-hidden"></div>
 
-    <div
-      id="sheet"
-      class="fixed left-0 right-0 bottom-0 z-50 transition-all duration-200 sheet-hidden"
-      aria-hidden="true"
-    >
+    <div id="sheet" class="fixed left-0 right-0 bottom-0 z-50 transition-all duration-200 sheet-hidden" aria-hidden="true">
       <div class="max-w-4xl mx-auto px-4 pb-4">
         <div class="rounded-3xl bg-slate-950 border border-slate-800 overflow-hidden shadow-2xl">
           <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
@@ -142,17 +160,11 @@
               <button id="maxBtn" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm">Max</button>
             </div>
 
-            <button
-              id="tradeBtn"
-              class="mt-5 w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 font-bold text-lg"
-            >
+            <button id="tradeBtn" class="mt-5 w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 font-bold text-lg">
               賭ける
             </button>
 
-            <div class="mt-2 text-xs text-slate-500">
-              By trading, you agree to the Terms of Use.
-            </div>
-
+            <div class="mt-2 text-xs text-slate-500">By trading, you agree to the Terms of Use.</div>
             <div class="mt-3 text-sm text-amber-200" id="sheetMsg"></div>
           </div>
         </div>

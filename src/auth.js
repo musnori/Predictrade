@@ -66,22 +66,25 @@ function showNameModal() {
 }
 
 export async function initAuthAndRender() {
-  const deviceId = getOrCreateDeviceId();
-
-  let name = localStorage.getItem(LS_NAME);
-  if (!name) {
-    name = await showNameModal();
-    localStorage.setItem(LS_NAME, name);
-  }
+  // initAuthAndRender 内の後半だけ差し替え
 
   const data = await upsertUserOnServer(deviceId, name);
-  const points = data?.user?.points ?? 0;
+
+  const serverName = (data?.user?.name ?? name).trim();
+  const points = Math.floor(data?.user?.points ?? 0);
+
+  // サーバ側で名前が調整されていたら、ローカルも追従
+  if (serverName && serverName !== name) {
+    localStorage.setItem(LS_NAME, serverName);
+    name = serverName;
+  }
 
   const pointsEl = document.getElementById("userPoints");
   if (pointsEl) pointsEl.textContent = points.toLocaleString();
 
   const nameEl = document.getElementById("userName");
-  if (nameEl) nameEl.textContent = name;
+  if (nameEl) nameEl.textContent = serverName;
 
-  return { deviceId, name, points };
+  return { deviceId, name: serverName, points };
+
 }

@@ -1,5 +1,6 @@
 import { initAuthAndRender } from "./auth.js";
 import { getMyHistory } from "./storage.js";
+import { initUserMenu } from "./userMenu.js";
 
 function fmtDate(iso) {
   if (!iso) return "-";

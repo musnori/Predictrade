@@ -1,4 +1,6 @@
+// src/event.js
 import { initAuthAndRender } from "./auth.js";
+import { initUserMenu } from "./userMenu.js";
 import {
   getEventById,
   buyShares,
@@ -8,6 +10,7 @@ import {
 } from "./storage.js";
 
 let auth;
+let me = null; // ✅ 画面の正は常にここ（DOM依存をやめる）
 let ev;
 let selectedOptionId = null;
 
@@ -17,12 +20,25 @@ function idFromQuery() {
   return new URLSearchParams(location.search).get("id");
 }
 
+function renderMe(u) {
+  me = u && typeof u === "object" ? u : { name: "", points: 0 };
+  me.points = Number(me.points || 0);
+  me.name = String(me.name || "");
+
+  const pointsEl = document.getElementById("userPoints");
+  if (pointsEl) pointsEl.textContent = me.points.toLocaleString();
+
+  const nameEl = document.getElementById("userName");
+  if (nameEl) nameEl.textContent = me.name;
+}
+
 function updateResolvedBadge() {
   const badge = document.getElementById("resolvedBadge");
   if (!badge) return;
   if (ev.status === "resolved") {
     badge.classList.remove("hidden");
-    const ans = (ev.options || []).find(o => o.id === ev.resultOptionId)?.text ?? "-";
+    const ans =
+      (ev.options || []).find((o) => o.id === ev.resultOptionId)?.text ?? "-";
     badge.textContent = `確定：${ans}`;
   } else {
     badge.classList.add("hidden");
@@ -31,25 +47,32 @@ function updateResolvedBadge() {
 
 function renderMeta() {
   const end = new Date(ev.endDate);
-  document.getElementById("eventMeta").textContent =
-    `${end.toLocaleString("ja-JP")}（${timeRemaining(ev.endDate)}） / ${ev.category}`;
-  document.getElementById("title").textContent = ev.title ?? "-";
-  document.getElementById("desc").textContent = ev.description ?? "-";
+  const meta = document.getElementById("eventMeta");
+  if (meta) {
+    meta.textContent = `${end.toLocaleString("ja-JP")}（${timeRemaining(
+      ev.endDate
+    )}） / ${ev.category}`;
+  }
+  const titleEl = document.getElementById("title");
+  if (titleEl) titleEl.textContent = ev.title ?? "-";
+  const descEl = document.getElementById("desc");
+  if (descEl) descEl.textContent = ev.description ?? "-";
 }
 
 function calcPrices() {
-  const q = (ev.options || []).map(o => Number(o.q || 0));
+  const q = (ev.options || []).map((o) => Number(o.q || 0));
   return lmsrPrices(q, ev.liquidityB || 50);
 }
 
 function getSelectedIndex() {
-  return (ev.options || []).findIndex(o => o.id === selectedOptionId);
+  return (ev.options || []).findIndex((o) => o.id === selectedOptionId);
 }
 
 /* ================= LMSR: bet → shares ================= */
 
 function sharesForBudget(q, idx, bet, b) {
-  let lo = 0, hi = 1;
+  let lo = 0,
+    hi = 1;
   for (let k = 0; k < 30; k++) {
     if (lmsrCostDelta(q, idx, hi, b) >= bet) break;
     hi *= 2;
@@ -83,9 +106,8 @@ function showSheet(show) {
 }
 
 function getUserPoints() {
-  const s = document.getElementById("userPoints")?.textContent || "0";
-  const n = Number(String(s).replace(/,/g, ""));
-  return Number.isFinite(n) ? n : 0;
+  // ✅ DOMではなくmeを正にする
+  return Number(me?.points || 0);
 }
 
 function clampBet(v) {
@@ -96,8 +118,10 @@ function clampBet(v) {
 
 function setBet(v) {
   const x = clampBet(v);
-  betInputEl().value = String(x);
-  betBigEl().textContent = String(x.toLocaleString());
+  const input = betInputEl();
+  if (input) input.value = String(x);
+  const big = betBigEl();
+  if (big) big.textContent = String(x.toLocaleString());
   updateBetUI();
 }
 
@@ -106,35 +130,43 @@ function updateSheetHeader() {
   const idx = getSelectedIndex();
   const p = idx >= 0 ? Math.round(ps[idx] * 100) : 0;
 
-  const text = (ev.options || []).find(o => o.id === selectedOptionId)?.text ?? "-";
-  document.getElementById("sheetOptionText").textContent = text;
-  document.getElementById("sheetProb").textContent = `${p}%`;
-  document.getElementById("sheetSideLabel").textContent = "Yes";
+  const text =
+    (ev.options || []).find((o) => o.id === selectedOptionId)?.text ?? "-";
+  const optTextEl = document.getElementById("sheetOptionText");
+  if (optTextEl) optTextEl.textContent = text;
+
+  const probEl = document.getElementById("sheetProb");
+  if (probEl) probEl.textContent = `${p}%`;
+
+  const sideEl = document.getElementById("sheetSideLabel");
+  if (sideEl) sideEl.textContent = "Yes";
 }
 
 function updateBetUI() {
-  if (!payoutEl()) return;
+  const payout = payoutEl();
+  if (!payout) return;
 
   if (!selectedOptionId) {
-    payoutEl().textContent = "選択肢を選んでください";
+    payout.textContent = "選択肢を選んでください";
     return;
   }
-  const bet = clampBet(betInputEl().value);
-  betBigEl().textContent = String(bet.toLocaleString());
+  const bet = clampBet(betInputEl()?.value);
+  const big = betBigEl();
+  if (big) big.textContent = String(bet.toLocaleString());
 
   if (bet <= 0) {
-    payoutEl().textContent = "-";
+    payout.textContent = "-";
     return;
   }
 
   const idx = getSelectedIndex();
-  const q = (ev.options || []).map(o => Number(o.q || 0));
+  const q = (ev.options || []).map((o) => Number(o.q || 0));
   const b = ev.liquidityB || 50;
   const ps = lmsrPrices(q, b);
   const p = Math.min(0.999999, Math.max(0.000001, ps[idx]));
 
   const profit = Math.max(0, bet / p - bet);
-  payoutEl().textContent = `当たると +${Math.round(profit).toLocaleString()} pt（目安）`;
+  payout.textContent = `当たると +${Math.round(profit).toLocaleString()} pt（目安）`;
 }
 
 /* ================= UI（選択肢一覧） ================= */
@@ -142,6 +174,7 @@ function updateBetUI() {
 function renderOptions() {
   const ps = calcPrices();
   const wrap = document.getElementById("options");
+  if (!wrap) return;
   wrap.innerHTML = "";
 
   (ev.options || []).forEach((o, i) => {
@@ -149,18 +182,19 @@ function renderOptions() {
     const card = document.createElement("div");
     card.className = "opt rounded-2xl p-4 cursor-pointer";
     card.addEventListener("click", () => {
-      if (ev.status === "resolved") return; // 確定済みなら賭けさせない
+      if (ev.status === "resolved") return;
 
       selectedOptionId = o.id;
-      document.querySelectorAll(".opt").forEach(x => x.classList.remove("selected"));
+      document.querySelectorAll(".opt").forEach((x) => x.classList.remove("selected"));
       card.classList.add("selected");
 
-      // Polymarket風：タップでBottom Sheet
       updateSheetHeader();
       setBet(0);
-      sheetMsgEl().textContent = "";
+      const msg = sheetMsgEl();
+      if (msg) msg.textContent = "";
       showSheet(true);
     });
+
     card.innerHTML = `
       <div class="flex items-center justify-between gap-3">
         <div class="font-medium text-lg">${o.text}</div>
@@ -211,8 +245,11 @@ async function adminApi(path, opts = {}) {
 }
 
 async function loadParticipants() {
-  const out = await adminApi(`/api/admin/users?action=participants&eventId=${ev.id}`);
+  const out = await adminApi(
+    `/api/admin/users?action=participants&eventId=${ev.id}`
+  );
   const wrap = document.getElementById("adminParticipants");
+  if (!wrap) return;
   wrap.innerHTML = "";
 
   (out.participants || []).forEach((p) => {
@@ -222,14 +259,18 @@ async function loadParticipants() {
     row.innerHTML = `
       <div>
         <div class="font-semibold">${p.name}</div>
-        <div class="text-xs text-slate-400">${p.deviceId} / shares:${Number(p.totalShares || 0).toFixed(2)}</div>
+        <div class="text-xs text-slate-400">${p.deviceId} / shares:${Number(
+      p.totalShares || 0
+    ).toFixed(2)}</div>
       </div>
       <button class="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-sm">削除</button>
     `;
     row.querySelector("button").onclick = async () => {
       if (!confirm(`${p.name} を削除しますか？`)) return;
       await adminApi(
-        `/api/admin/users?action=removeParticipant&eventId=${ev.id}&deviceId=${encodeURIComponent(p.deviceId)}`,
+        `/api/admin/users?action=removeParticipant&eventId=${ev.id}&deviceId=${encodeURIComponent(
+          p.deviceId
+        )}`,
         { method: "POST" }
       );
       await loadParticipants();
@@ -254,13 +295,13 @@ function renderAdminResolveSelect() {
     sel.appendChild(op);
   });
 
-  // resolvedならUIを無効化
   if (ev.status === "resolved") {
     btn.disabled = true;
     btn.classList.add("opacity-50", "cursor-not-allowed");
     sel.disabled = true;
     sel.classList.add("opacity-50", "cursor-not-allowed");
-    const ans = (ev.options || []).find(o => o.id === ev.resultOptionId)?.text ?? "-";
+    const ans =
+      (ev.options || []).find((o) => o.id === ev.resultOptionId)?.text ?? "-";
     if (msg) msg.textContent = `確定済み：${ans}`;
   } else {
     btn.disabled = false;
@@ -272,7 +313,6 @@ function renderAdminResolveSelect() {
 }
 
 async function resolveAndPayout(resultOptionId) {
-  // ここは「api/events/[id]/resolve.js」に投げる（分配までやってくれる）
   const out = await adminApi(`/api/events/${ev.id}/resolve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -285,9 +325,16 @@ async function resolveAndPayout(resultOptionId) {
 
 document.addEventListener("DOMContentLoaded", async () => {
   auth = await initAuthAndRender();
+  // ✅ initAuthAndRender直後のサーバ整合値を画面の正としてセット
+  renderMe({ name: auth.name, points: auth.points });
 
-  document.getElementById("backBtn").onclick = () =>
-    history.length > 1 ? history.back() : (location.href = "index.html");
+  initUserMenu();
+
+  const backBtn = document.getElementById("backBtn");
+  if (backBtn) {
+    backBtn.onclick = () =>
+      history.length > 1 ? history.back() : (location.href = "index.html");
+  }
 
   const id = idFromQuery();
   if (!id) return;
@@ -298,77 +345,90 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderAdminResolveSelect();
 
   // Sheet close actions
-  overlayEl().addEventListener("click", () => showSheet(false));
-  document.getElementById("sheetClose").addEventListener("click", () => showSheet(false));
+  overlayEl()?.addEventListener("click", () => showSheet(false));
+  document.getElementById("sheetClose")?.addEventListener("click", () =>
+    showSheet(false)
+  );
 
   // Bet input sync
-  betInputEl().addEventListener("input", () => {
-    const v = clampBet(betInputEl().value);
-    betInputEl().value = String(v);
-    betBigEl().textContent = String(v.toLocaleString());
+  betInputEl()?.addEventListener("input", () => {
+    const v = clampBet(betInputEl()?.value);
+    if (betInputEl()) betInputEl().value = String(v);
+    if (betBigEl()) betBigEl().textContent = String(v.toLocaleString());
     updateBetUI();
   });
 
   // +/- buttons
-  document.getElementById("minusBtn").onclick = () => setBet(clampBet(Number(betInputEl().value) - 10));
-  document.getElementById("plusBtn").onclick = () => setBet(clampBet(Number(betInputEl().value) + 10));
+  const minusBtn = document.getElementById("minusBtn");
+  if (minusBtn) minusBtn.onclick = () => setBet(clampBet(Number(betInputEl()?.value) - 10));
+  const plusBtn = document.getElementById("plusBtn");
+  if (plusBtn) plusBtn.onclick = () => setBet(clampBet(Number(betInputEl()?.value) + 10));
 
   // quick add
   document.querySelectorAll(".quickBtn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const add = Number(btn.getAttribute("data-add") || 0);
-      setBet(clampBet(Number(betInputEl().value) + add));
+      setBet(clampBet(Number(betInputEl()?.value) + add));
     });
   });
-  document.getElementById("maxBtn").onclick = () => setBet(getUserPoints());
+
+  const maxBtn = document.getElementById("maxBtn");
+  if (maxBtn) maxBtn.onclick = () => setBet(getUserPoints());
 
   // Trade
-  document.getElementById("tradeBtn").onclick = async () => {
-    const msg = sheetMsgEl();
-    msg.textContent = "";
-    try {
-      if (ev.status === "resolved") throw new Error("確定済みです");
-      if (!selectedOptionId) throw new Error("選択肢を選んでください");
+  const tradeBtn = document.getElementById("tradeBtn");
+  if (tradeBtn) {
+    tradeBtn.onclick = async () => {
+      const msg = sheetMsgEl();
+      if (msg) msg.textContent = "";
+      try {
+        if (ev.status === "resolved") throw new Error("確定済みです");
+        if (!selectedOptionId) throw new Error("選択肢を選んでください");
 
-      const bet = clampBet(betInputEl().value);
-      if (bet <= 0) throw new Error("ポイントが不正です");
+        const bet = clampBet(betInputEl()?.value);
+        if (bet <= 0) throw new Error("ポイントが不正です");
 
-      const idx = getSelectedIndex();
-      const q = (ev.options || []).map((o) => Number(o.q || 0));
-      const b = ev.liquidityB || 50;
-      const shares = sharesForBudget(q, idx, bet, b);
+        const idx = getSelectedIndex();
+        const q = (ev.options || []).map((o) => Number(o.q || 0));
+        const b = ev.liquidityB || 50;
+        const shares = sharesForBudget(q, idx, bet, b);
 
-      const out = await buyShares({
-        eventId: ev.id,
-        deviceId: auth.deviceId,
-        optionId: selectedOptionId,
-        shares,
-      });
+        const out = await buyShares({
+          eventId: ev.id,
+          deviceId: auth.deviceId,
+          optionId: selectedOptionId,
+          shares,
+        });
 
-      document.getElementById("userPoints").textContent = out.user.points.toLocaleString();
-      ev = out.event;
+        // ✅ 正は out.user
+        if (out?.user) renderMe(out.user);
+        ev = out.event;
 
-      // UI refresh
-      renderOptions();
-      showSheet(false);
+        // UI refresh
+        renderOptions();
+        showSheet(false);
 
-      const topMsg = document.getElementById("msg");
-      topMsg.textContent = "賭けました！";
-      setTimeout(() => (topMsg.textContent = ""), 1500);
-    } catch (e) {
-      msg.textContent = String(e?.message || e);
-    }
-  };
+        const topMsg = document.getElementById("msg");
+        if (topMsg) {
+          topMsg.textContent = "賭けました！";
+          setTimeout(() => (topMsg.textContent = ""), 1500);
+        }
+      } catch (e) {
+        if (msg) msg.textContent = String(e?.message || e);
+      }
+    };
+  }
 
   /* 🔑 管理者ショートカット：Ctrl/⌘ + Shift + A */
   window.addEventListener("keydown", async (e) => {
-    const meta = navigator.platform.toLowerCase().includes("mac") ? e.metaKey : e.ctrlKey;
+    const meta = navigator.platform.toLowerCase().includes("mac")
+      ? e.metaKey
+      : e.ctrlKey;
     if (meta && e.shiftKey && (e.key === "A" || e.key === "a")) {
       const code = prompt("管理者コードを入力してください");
       if (!code) return;
       setAdminKey(code.trim());
       try {
-        // これが通れば管理者
         await adminApi(`/api/admin/users?action=participants&eventId=${ev.id}`);
         showAdminPanel(true);
         alert("管理者モードON");
@@ -383,44 +443,65 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   // 管理者：参加者更新
-  document.getElementById("adminRefreshBtn").onclick = loadParticipants;
+  const adminRefreshBtn = document.getElementById("adminRefreshBtn");
+  if (adminRefreshBtn) adminRefreshBtn.onclick = loadParticipants;
 
-  // 管理者：イベント削除（既存のadmin/usersルート）
-  document.getElementById("adminDeleteEventBtn").onclick = async () => {
-    if (!confirm("イベントを削除しますか？")) return;
-    await adminApi(`/api/admin/users?action=deleteEvent&eventId=${ev.id}`, { method: "POST" });
-    location.href = "index.html";
-  };
+  // 管理者：イベント削除
+  const adminDeleteEventBtn = document.getElementById("adminDeleteEventBtn");
+  if (adminDeleteEventBtn) {
+    adminDeleteEventBtn.onclick = async () => {
+      if (!confirm("イベントを削除しますか？")) return;
+      await adminApi(`/api/admin/users?action=deleteEvent&eventId=${ev.id}`, {
+        method: "POST",
+      });
+      location.href = "index.html";
+    };
+  }
 
   // ✅ 管理者：結果確定（分配）
-  document.getElementById("adminResolveBtn").onclick = async () => {
-    const msg = document.getElementById("adminResolveMsg");
-    msg.textContent = "";
-    try {
-      if (ev.status === "resolved") throw new Error("すでに確定済みです");
+  const adminResolveBtn = document.getElementById("adminResolveBtn");
+  if (adminResolveBtn) {
+    adminResolveBtn.onclick = async () => {
+      const msg = document.getElementById("adminResolveMsg");
+      if (msg) msg.textContent = "";
+      try {
+        if (ev.status === "resolved") throw new Error("すでに確定済みです");
 
-      const sel = document.getElementById("adminResolveSelect");
-      const resultOptionId = Number(sel.value);
-      if (!Number.isFinite(resultOptionId)) throw new Error("結果が不正です");
+        const sel = document.getElementById("adminResolveSelect");
+        const resultOptionId = Number(sel?.value);
+        if (!Number.isFinite(resultOptionId)) throw new Error("結果が不正です");
 
-      const ansText = (ev.options || []).find(o => o.id === resultOptionId)?.text ?? "-";
-      if (!confirm(`結果を「${ansText}」で確定して、分配しますか？（取り消し不可）`)) return;
+        const ansText =
+          (ev.options || []).find((o) => o.id === resultOptionId)?.text ?? "-";
+        if (
+          !confirm(
+            `結果を「${ansText}」で確定して、分配しますか？（取り消し不可）`
+          )
+        )
+          return;
 
-      const out = await resolveAndPayout(resultOptionId);
+        const out = await resolveAndPayout(resultOptionId);
 
-      // 最新反映
-      await refresh();
-      await loadParticipants();
+        await refresh();
+        await loadParticipants();
 
-      msg.textContent = `確定しました：${ansText}（支払い件数: ${out.count ?? out.payouts?.length ?? 0}）`;
-    } catch (e) {
-      msg.textContent = String(e?.message || e);
-    }
-  };
+        if (msg) {
+          msg.textContent = `確定しました：${ansText}（支払い件数: ${
+            out.count ?? out.payouts?.length ?? 0
+          }）`;
+        }
+      } catch (e) {
+        if (msg) msg.textContent = String(e?.message || e);
+      }
+    };
+  }
 
   // 管理者ログアウト
-  document.getElementById("adminLogoutBtn").onclick = () => {
-    clearAdminKey();
-    showAdminPanel(false);
-  };
+  const adminLogoutBtn = document.getElementById("adminLogoutBtn");
+  if (adminLogoutBtn) {
+    adminLogoutBtn.onclick = () => {
+      clearAdminKey();
+      showAdminPanel(false);
+    };
+  }
 });

@@ -5,6 +5,13 @@ function normStr(v) {
   return String(v ?? "");
 }
 
+function normalizeUser(u) {
+  const user = u && typeof u === "object" ? { ...u } : {};
+  user.name = String(user.name || "").trim().slice(0, 20);
+  user.points = Number(user.points || 0);
+  return user;
+}
+
 function optionText(ev, optionId) {
   const opt = (ev?.options || []).find((o) => Number(o.id) === Number(optionId));
   return opt?.text ?? "-";
@@ -26,10 +33,12 @@ export default async function handler(req, res) {
     if (!deviceId) return res.status(400).send("deviceId required");
 
     const store = await loadStore();
-    const user = store.users?.[deviceId];
-    if (!user) return res.status(404).send("not found");
+    const rawUser = store.users?.[deviceId];
+    if (!rawUser) return res.status(404).send("not found");
 
-    // ===== 追加：履歴モード =====
+    const user = normalizeUser(rawUser);
+
+    // ===== 履歴モード =====
     if (req.query.action === "history") {
       const events = Array.isArray(store.events) ? store.events : [];
       const history = [];
@@ -50,13 +59,13 @@ export default async function handler(req, res) {
 
             // trade
             createdAt: t.createdAt ?? null,
-            optionId: t.optionId,
+            optionId: Number(t.optionId),
             optionText: optionText(ev, t.optionId),
             shares: Number(t.shares || 0),
             cost: Number(t.cost || 0),
 
             // status
-            outcome: outcomeLabel(ev, t.optionId), // 未確定/的中/ハズレ
+            outcome: outcomeLabel(ev, t.optionId),
           });
         }
       }
@@ -66,13 +75,13 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ok: true,
         user,
-        count: history.length,
         history,
+        count: history.length,
       });
     }
 
-    // ===== 既存：ユーザーだけ返す =====
-    return res.status(200).json(user);
+    // ===== 通常：統一形式で返す =====
+    return res.status(200).json({ ok: true, user });
   } catch (e) {
     console.error("users/[deviceId] error:", e);
     return res.status(500).send(`users api failed: ${e?.message || String(e)}`);

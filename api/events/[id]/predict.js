@@ -39,6 +39,7 @@ export default async function handler(req, res) {
     if (!deviceId || !optionId) return res.status(400).send("deviceId and optionId required");
 
     const user = ensureUser(store, deviceId);
+    user.points = Number(user.points || 0);
 
     const sh = Number(shares || 0);
     if (!Number.isFinite(sh) || sh <= 0) return res.status(400).send("shares must be > 0");
@@ -51,7 +52,7 @@ export default async function handler(req, res) {
     const qArr = (ev.options || []).map((o) => Number(o.q || 0));
 
     const cost = lmsrCostDelta(qArr, idx, sh, b);
-    const costCeil = Math.ceil(cost * 1000) / 1000;
+    const costCeil = Math.max(1, Math.ceil(cost));
 
     if (user.points < costCeil) return res.status(400).send("not enough points");
 
@@ -70,6 +71,8 @@ export default async function handler(req, res) {
     ev.trades.unshift({
       deviceId,
       name: user.name,
+      nickname: user.name,      // UIがnickname参照でもOK
+      userName: user.name,      // UIがuserName参照でもOK
       optionId: Number(optionId),
       shares: sh,
       cost: costCeil,

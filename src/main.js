@@ -1,5 +1,6 @@
 import { initAuthAndRender } from "./auth.js";
 import { getEvents, getCategoryName, timeRemaining } from "./storage.js";
+import { initUserMenu } from "./userMenu.js";
 
 async function render() {
   const grid = document.getElementById("eventsGrid");
@@ -77,6 +78,7 @@ async function render() {
 
 document.addEventListener("DOMContentLoaded", async () => {
   await initAuthAndRender();
+  initUserMenu();
   await render();
   document.getElementById("filterCategory")?.addEventListener("change", render);
   document.getElementById("sortBy")?.addEventListener("change", render);
