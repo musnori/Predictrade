@@ -1,68 +1,79 @@
-// api/events/[id]/predict.js
-import { loadStore, saveStore, ensureUser } from "../../_kv.js";
-
-function pushSnapshot(ev) {
-  const total = Number(ev.totalStaked || 0);
-  const probs = {};
-  for (const o of ev.options || []) {
-    const s = Number(o.staked || 0);
-    probs[o.id] = total <= 0 ? 0 : Math.round((s / total) * 1000) / 10; // 0.1%
-  }
-  ev.snapshots = Array.isArray(ev.snapshots) ? ev.snapshots : [];
-  ev.snapshots.push({ t: new Date().toISOString(), probs });
-  if (ev.snapshots.length > 200) ev.snapshots = ev.snapshots.slice(-200);
-}
+import {
+  loadStore,
+  saveStore,
+  ensureUser,
+  lmsrPrices,
+  lmsrCostDelta,
+  nowISO,
+} from "../../_kv.js";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  try {
+    if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
 
-  const store = await loadStore();
-  const eventId = Number(req.query.id);
-  const ev = (store.events || []).find((e) => e.id === eventId);
-  if (!ev) return res.status(404).send("event not found");
-  if (ev.status === "resolved") return res.status(400).send("event already resolved");
+    const store = await loadStore();
+    const eventId = Number(req.query.id);
+    const ev = (store.events || []).find((e) => Number(e.id) === eventId);
+    if (!ev) return res.status(404).send("event not found");
+    if (ev.status === "resolved") return res.status(400).send("event already resolved");
 
-  const now = Date.now();
-  const end = new Date(ev.endDate).getTime();
-  if (!Number.isFinite(end)) return res.status(400).send("invalid endDate");
-  if (now >= end) return res.status(400).send("event closed");
+    const end = new Date(ev.endDate).getTime();
+    if (Number.isFinite(end) && Date.now() >= end) return res.status(400).send("event closed");
 
-  const { deviceId, optionId, points } = req.body || {};
-  if (!deviceId || !optionId) return res.status(400).send("deviceId and optionId required");
+    const { deviceId, optionId, shares } = req.body || {};
+    if (!deviceId || !optionId) return res.status(400).send("deviceId and optionId required");
 
-  const user = ensureUser(store, deviceId);
+    const user = ensureUser(store, deviceId);
 
-  const p = Number(points || 0);
-  if (!Number.isFinite(p)) return res.status(400).send("points must be a number");
-  if (p < 10 || p > 1000) return res.status(400).send("points must be 10..1000");
-  if (user.points < p) return res.status(400).send("not enough points");
+    const sh = Number(shares || 0);
+    if (!Number.isFinite(sh) || sh <= 0) return res.status(400).send("shares must be > 0");
+    if (sh > 1000) return res.status(400).send("shares too large (<=1000)"); // 安全のため
 
-  const opt = (ev.options || []).find((o) => o.id === Number(optionId));
-  if (!opt) return res.status(400).send("option not found");
+    const idx = (ev.options || []).findIndex((o) => Number(o.id) === Number(optionId));
+    if (idx < 0) return res.status(400).send("option not found");
 
-  ev.predictions = Array.isArray(ev.predictions) ? ev.predictions : [];
-  const alreadyParticipated = ev.predictions.some((pred) => pred.deviceId === deviceId);
+    const b = Number(ev.liquidityB || 50);
+    const qArr = (ev.options || []).map((o) => Number(o.q || 0));
 
-  // ✅ 賭けポイントを引く
-  user.points -= p;
+    // ✅ LMSR cost
+    const cost = lmsrCostDelta(qArr, idx, sh, b);
+    const costCeil = Math.ceil(cost * 1000) / 1000; // 表示用に少し丸め（内部はcostでOK）
 
-  // ✅ ここがプールになる
-  opt.staked = Number(opt.staked || 0) + p;
-  ev.totalStaked = Number(ev.totalStaked || 0) + p;
+    if (user.points < costCeil) return res.status(400).send("not enough points");
 
-  if (!alreadyParticipated) ev.participants = Number(ev.participants || 0) + 1;
+    // 更新
+    user.points -= costCeil;
+    ev.options[idx].q = Number(ev.options[idx].q || 0) + sh;
 
-  ev.predictions.unshift({
-    deviceId,
-    name: user.name,
-    optionId: opt.id,
-    points: p,
-    createdAt: new Date().toISOString(),
-    payout: 0,
-  });
+    // holdings
+    ev.holdings = ev.holdings && typeof ev.holdings === "object" ? ev.holdings : {};
+    ev.holdings[deviceId] = ev.holdings[deviceId] && typeof ev.holdings[deviceId] === "object" ? ev.holdings[deviceId] : {};
+    ev.holdings[deviceId][String(optionId)] = Number(ev.holdings[deviceId][String(optionId)] || 0) + sh;
 
-  pushSnapshot(ev);
+    // trades
+    ev.trades = Array.isArray(ev.trades) ? ev.trades : [];
+    ev.trades.unshift({
+      deviceId,
+      name: user.name,
+      optionId: Number(optionId),
+      shares: sh,
+      cost: costCeil,
+      createdAt: nowISO(),
+    });
 
-  await saveStore(store);
-  return res.status(200).json({ ok: true, user, event: ev });
+    // snapshot
+    const newQ = (ev.options || []).map((o) => Number(o.q || 0));
+    const ps = lmsrPrices(newQ, b);
+    const prices = {};
+    ev.options.forEach((o, i) => (prices[o.id] = ps[i]));
+    ev.snapshots = Array.isArray(ev.snapshots) ? ev.snapshots : [];
+    ev.snapshots.push({ t: nowISO(), prices });
+    if (ev.snapshots.length > 300) ev.snapshots = ev.snapshots.slice(-300);
+
+    await saveStore(store);
+    return res.status(200).json({ ok: true, user, event: ev });
+  } catch (e) {
+    console.error("predict(buy) error:", e);
+    return res.status(500).send(`buy failed: ${e?.message || String(e)}`);
+  }
 }

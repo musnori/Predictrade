@@ -1,56 +1,20 @@
-// api/_kv.js
 import { kv } from "@vercel/kv";
 
-const KEY = "predictrade:store:v2";
+const KEY = "predictrade:lmsr:v1";
 
 function defaultStore() {
   return {
     events: [],
-    users: {},
+    users: {}, // deviceId -> { name, points }
   };
-}
-
-function migrateStore(store) {
-  const s = store && typeof store === "object" ? store : defaultStore();
-  s.events = Array.isArray(s.events) ? s.events : [];
-  s.users = s.users && typeof s.users === "object" ? s.users : {};
-
-  for (const ev of s.events) {
-    ev.status = ev.status || "active";
-    ev.endDate = ev.endDate || new Date(Date.now() + 3600 * 1000).toISOString();
-
-    // ✅ パリミューチュエル：固定賞金なし
-    ev.totalStaked = Number(ev.totalStaked || 0);
-
-    ev.options = Array.isArray(ev.options) ? ev.options : [];
-    for (const o of ev.options) {
-      o.id = Number(o.id);
-      o.text = String(o.text ?? "");
-      o.staked = Number(o.staked || 0);
-    }
-
-    ev.predictions = Array.isArray(ev.predictions) ? ev.predictions : [];
-    ev.snapshots = Array.isArray(ev.snapshots) ? ev.snapshots : [];
-
-    ev.participants = Number(ev.participants || 0);
-    ev.resolvedOptionId = ev.resolvedOptionId ?? null;
-    ev.resolvedAt = ev.resolvedAt ?? null;
-    ev.payoutDone = Boolean(ev.payoutDone);
-  }
-
-  return s;
 }
 
 export async function loadStore() {
   const data = await kv.get(KEY);
-  if (!data) {
-    const init = defaultStore();
-    await kv.set(KEY, init);
-    return init;
-  }
-  const migrated = migrateStore(data);
-  await kv.set(KEY, migrated);
-  return migrated;
+  const store = data && typeof data === "object" ? data : defaultStore();
+  store.events = Array.isArray(store.events) ? store.events : [];
+  store.users = store.users && typeof store.users === "object" ? store.users : {};
+  return store;
 }
 
 export async function saveStore(store) {
@@ -67,42 +31,46 @@ export function ensureUser(store, deviceId) {
   return store.users[deviceId];
 }
 
-export function isAuthorized(req) {
+// ===== Admin auth =====
+export function isAdminRequest(req) {
   const ADMIN_KEY = process.env.ADMIN_KEY;
-  if (!ADMIN_KEY) return true; // デモは鍵なしOK（本番はADMIN_KEY入れる）
-  const keyFromHeader = req.headers["x-admin-key"];
+  if (!ADMIN_KEY) return false;
   const keyFromQuery = req.query?.key;
-  return keyFromHeader === ADMIN_KEY || keyFromQuery === ADMIN_KEY;
+  const keyFromHeader = req.headers["x-admin-key"];
+  return keyFromQuery === ADMIN_KEY || keyFromHeader === ADMIN_KEY;
 }
 
-// ✅ 確定＆分配（固定賞金なし：totalStakedのみ）
-export function resolveAndPayout(store, ev, winningOptionId) {
-  if (!ev || ev.status === "resolved") return;
+// ===== LMSR core =====
+// C(q) = b * ln( sum_i exp(q_i / b) )
+export function lmsrCost(qArr, b) {
+  const B = Number(b);
+  if (!Number.isFinite(B) || B <= 0) throw new Error("invalid liquidity(b)");
 
-  const winId = Number(winningOptionId);
-  const winOpt = (ev.options || []).find((o) => Number(o.id) === winId);
-  if (!winOpt) throw new Error("winning option not found");
+  const xs = qArr.map((q) => Math.exp(Number(q || 0) / B));
+  const s = xs.reduce((a, v) => a + v, 0);
+  return B * Math.log(s);
+}
 
-  const totalPool = Number(ev.totalStaked || 0);        // ←固定賞金なし
-  const winnersSum = Number(winOpt.staked || 0);
+export function lmsrPrices(qArr, b) {
+  const B = Number(b);
+  const xs = qArr.map((q) => Math.exp(Number(q || 0) / B));
+  const s = xs.reduce((a, v) => a + v, 0);
+  return xs.map((v) => (s <= 0 ? 0 : v / s));
+}
 
-  // 勝ち側に誰も賭けてない場合、分配できない（ゼロ割）
-  if (totalPool > 0 && winnersSum > 0) {
-    for (const pred of ev.predictions || []) {
-      if (Number(pred.optionId) !== winId) continue;
+// costDelta = C(q + dq) - C(q)
+export function lmsrCostDelta(qArr, idx, dq, b) {
+  const before = lmsrCost(qArr, b);
+  const afterQ = qArr.slice();
+  afterQ[idx] = Number(afterQ[idx] || 0) + Number(dq || 0);
+  const after = lmsrCost(afterQ, b);
+  return after - before;
+}
 
-      const payout = (totalPool * Number(pred.points || 0)) / winnersSum;
-      const uid = pred.deviceId;
-      if (!uid) continue;
+export function nowISO() {
+  return new Date().toISOString();
+}
 
-      const u = ensureUser(store, uid);
-      u.points += Math.floor(payout); // 端数は切り捨て
-      pred.payout = Math.floor(payout);
-    }
-  }
-
-  ev.status = "resolved";
-  ev.resolvedOptionId = winId;
-  ev.resolvedAt = new Date().toISOString();
-  ev.payoutDone = true;
+export function sanitizeText(v, max = 120) {
+  return String(v ?? "").trim().slice(0, max);
 }

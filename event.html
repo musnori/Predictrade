@@ -3,152 +3,95 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover" />
-  <title>PredicTrade - イベント</title>
-
+  <title>PredicTrade - Event</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
-    html, body { height: 100%; }
-    body{
-      font-family:Inter,sans-serif;
-      background:#0f172a;color:#f1f5f9;
-      overflow-x:hidden;
-      padding-top: env(safe-area-inset-top);
-      padding-bottom: env(safe-area-inset-bottom);
-    }
-    .gradient-text{background:linear-gradient(135deg,#10b981,#065f46);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    html,body{height:100%}
+    body{font-family:Inter,sans-serif;background:#0f172a;color:#f1f5f9}
     .card{background:linear-gradient(135deg,#1e293b,#334155);border:1px solid rgba(148,163,184,.2)}
-    .nav-link{transition:all .2s ease}
-    .nav-link:hover{color:#10b981;transform:translateY(-1px)}
-    .option-card{background:rgba(30,41,59,.45);border:1px solid rgba(148,163,184,.2)}
-    .option-card.selected{border-color:rgba(16,185,129,.85);box-shadow:0 0 0 2px rgba(16,185,129,.25) inset}
-    input, textarea, select { font-size:16px; } /* iOS zoom抑制 */
+    .opt{background:rgba(30,41,59,.45);border:1px solid rgba(148,163,184,.2)}
+    .opt.selected{border-color:rgba(16,185,129,.85);box-shadow:0 0 0 2px rgba(16,185,129,.25) inset}
+    input,textarea,select{font-size:16px}
   </style>
 </head>
-
 <body>
-<header class="bg-slate-900/95 backdrop-blur-sm border-b border-slate-700 sticky top-0 z-50">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="flex justify-between items-center h-16">
-      <div class="flex items-center space-x-2 min-w-0">
-        <div class="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-lg flex items-center justify-center shrink-0">
-          <span class="text-white font-bold text-sm">P</span>
-        </div>
-        <h1 class="text-xl font-bold gradient-text truncate">PredicTrade</h1>
-      </div>
-
-      <nav class="hidden md:flex space-x-8">
-        <a href="index.html" class="nav-link text-slate-300 hover:text-emerald-400">イベント</a>
-        <a href="create.html" class="nav-link text-slate-300 hover:text-emerald-400">作成</a>
-        <a href="dashboard.html" class="nav-link text-slate-300 hover:text-emerald-400">ダッシュボード</a>
-      </nav>
-
-      <div class="text-sm text-right leading-tight shrink-0">
-        <div class="text-slate-200 font-semibold" id="userName">-</div>
-        <div>
-          <span class="text-slate-400">ポイント:</span>
-          <span class="text-emerald-400 font-bold" id="userPoints">-</span>
-        </div>
-      </div>
+<header class="bg-slate-900/95 border-b border-slate-700 sticky top-0 z-50">
+  <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center font-bold">P</div>
+      <div class="text-xl font-bold">PredicTrade</div>
+    </div>
+    <div class="text-sm text-right">
+      <div id="userName" class="font-semibold">-</div>
+      <div><span class="text-slate-400">ポイント:</span> <span id="userPoints" class="text-emerald-400 font-bold">-</span></div>
     </div>
   </div>
 </header>
 
-<main class="py-8 sm:py-10">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
-    <div class="mb-4">
-      <button id="backBtn" class="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-100">
-        ← 戻る
-      </button>
+<main class="py-8">
+  <div class="max-w-6xl mx-auto px-4 space-y-6">
+    <div class="flex items-center gap-3 flex-wrap">
+      <button id="backBtn" class="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700">← 戻る</button>
+      <span id="eventMeta" class="text-slate-300 text-sm">-</span>
+      <span id="resolvedBadge" class="hidden px-3 py-1 rounded-full text-sm bg-emerald-500/20 text-emerald-200 border border-emerald-500/30">確定</span>
     </div>
 
-    <div class="mb-6">
-      <div class="flex items-center gap-3 mb-2 flex-wrap">
-        <span id="eventCategory" class="px-3 py-1 rounded-full text-sm bg-emerald-500/15 text-emerald-300">-</span>
-        <span class="text-slate-400 text-sm" id="eventEndDate">-</span>
-      </div>
-
-      <h2 class="text-2xl sm:text-3xl font-bold text-slate-100 mb-2" id="eventTitle">-</h2>
-      <p class="text-slate-300" id="eventDescription">-</p>
-
-      <div class="mt-4 flex flex-wrap gap-3 sm:gap-4 text-sm text-slate-300">
-        <div class="card rounded-lg px-4 py-2">
-          参加者: <span id="participantCount" class="text-slate-100 font-semibold">0人</span>
-        </div>
-        <div class="card rounded-lg px-4 py-2">
-          賞金プール: <span id="prizePool" class="text-emerald-400 font-semibold">0ポイント</span>
-        </div>
-        <div class="card rounded-lg px-4 py-2">
-          総投稿: <span id="totalVotes" class="text-slate-100 font-semibold">0回</span>
-        </div>
-      </div>
+    <div>
+      <h1 id="title" class="text-3xl font-bold">-</h1>
+      <p id="desc" class="text-slate-300 mt-2">-</p>
+      <div class="text-sm text-slate-300 mt-3">流動性 b: <span id="bVal" class="font-semibold">-</span></div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-      <!-- 左：選択肢＋賭け -->
-      <section class="card rounded-xl p-5 sm:p-6">
-        <h3 class="text-lg sm:text-xl font-bold text-slate-100 mb-4">予想を投稿</h3>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <section class="card rounded-xl p-6">
+        <h2 class="text-xl font-bold mb-4">マーケット（価格＝確率）</h2>
 
-        <!-- ✅ 選択肢 -->
-        <div id="predictionOptions" class="space-y-3 mb-6"></div>
+        <div id="options" class="space-y-3 mb-6"></div>
 
-        <form id="submitPredictionForm" class="space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-sm text-slate-300 mb-2">賭けるポイント（10〜1,000）</label>
-            <input
-              type="number"
-              id="betPoints"
-              min="10"
-              max="1000"
-              value="100"
-              class="w-full bg-slate-900/40 border border-slate-600 rounded-lg px-4 py-3 text-slate-100"
-              required
-            />
-            <p class="text-xs text-slate-400 mt-1">10〜1,000</p>
+            <label class="block text-sm text-slate-300 mb-1">購入するシェア数</label>
+            <input id="shares" type="number" min="0.1" step="0.1" value="10" class="w-full bg-slate-900/40 border border-slate-600 rounded-lg px-3 py-2 text-slate-100">
           </div>
-
-          <!-- ✅ いまのAPIはconfidenceを受けるので復活（表示は最小） -->
           <div>
-            <label class="block text-sm text-slate-300 mb-2">確信度（0〜100）</label>
-            <input
-              type="number"
-              id="confidence"
-              min="0"
-              max="100"
-              value="50"
-              class="w-full bg-slate-900/40 border border-slate-600 rounded-lg px-4 py-3 text-slate-100"
-              required
-            />
-            <p class="text-xs text-slate-400 mt-1">今のAPI互換のため一旦残す（後で削除可）</p>
+            <label class="block text-sm text-slate-300 mb-1">概算コスト</label>
+            <div id="estCost" class="w-full bg-slate-900/20 border border-slate-700 rounded-lg px-3 py-2 text-slate-100">-</div>
           </div>
+        </div>
 
-          <button
-            id="submitPredictionBtn"
-            type="submit"
-            class="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg py-3 font-semibold transition"
-          >
-            投稿する
-          </button>
+        <button id="buyBtn" class="mt-4 w-full bg-emerald-500 hover:bg-emerald-600 rounded-lg py-3 font-semibold">シェアを購入</button>
+        <div id="msg" class="text-sm text-slate-200 mt-2"></div>
 
-          <div id="msg" class="text-sm text-slate-200"></div>
-        </form>
+        <div class="mt-8 border-t border-slate-600/60 pt-6">
+          <h3 class="text-lg font-bold mb-2">選択肢を追加（ユーザー）</h3>
+          <div class="flex gap-2">
+            <input id="newOpt" class="flex-1 bg-slate-900/40 border border-slate-600 rounded-lg px-3 py-2 text-slate-100" placeholder="例：生成AIエージェント">
+            <button id="addOptBtn" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600">追加</button>
+          </div>
+          <div id="addOptMsg" class="text-sm text-slate-200 mt-2"></div>
+        </div>
+
+        <div class="mt-8 border-t border-slate-600/60 pt-6">
+          <h3 class="text-lg font-bold mb-2">結果確定（管理者）</h3>
+          <p class="text-sm text-slate-300 mb-2">ADMIN_KEYを入力して確定できます（デモ用）。</p>
+          <div class="flex gap-2">
+            <input id="adminKey" class="flex-1 bg-slate-900/40 border border-slate-600 rounded-lg px-3 py-2 text-slate-100" placeholder="ADMIN_KEY">
+            <select id="resolveSelect" class="bg-slate-900/40 border border-slate-600 rounded-lg px-3 py-2 text-slate-100"></select>
+            <button id="resolveBtn" class="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 font-semibold">確定</button>
+          </div>
+          <div id="resolveMsg" class="text-sm text-slate-200 mt-2"></div>
+        </div>
       </section>
 
-      <!-- 右：グラフ -->
-      <section class="card rounded-xl p-5 sm:p-6">
-        <h3 class="text-lg sm:text-xl font-bold text-slate-100 mb-4">投票比率（現状）</h3>
-        <div class="bg-slate-900/40 border border-slate-700 rounded-xl p-3">
-          <div class="min-h-[260px] sm:min-h-[340px]">
-            <canvas id="chart"></canvas>
-          </div>
+      <section class="card rounded-xl p-6">
+        <h2 class="text-xl font-bold mb-4">価格推移</h2>
+        <div class="h-[380px] bg-slate-900/25 border border-slate-700 rounded-xl p-3">
+          <canvas id="chart"></canvas>
         </div>
-        <p class="text-xs text-slate-400 mt-2">※いまは履歴保存が無いので「現状比率」を表示</p>
       </section>
     </div>
-
   </div>
 </main>
 

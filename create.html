@@ -2,41 +2,40 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>イベント作成 - PredicTrade</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
-    html, body { height: 100%; }
-    body{
-      font-family:Inter,sans-serif;background:#0f172a;color:#f1f5f9;
-      overflow-x:hidden;
-      padding-top: env(safe-area-inset-top);
-      padding-bottom: env(safe-area-inset-bottom);
-    }
+    body{font-family:Inter,sans-serif;background:#0f172a;color:#f1f5f9}
     .gradient-text{background:linear-gradient(135deg,#10b981,#065f46);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
     .form-input{background:#1e293b;border:1px solid rgba(148,163,184,.3)}
     .form-input:focus{border-color:#10b981;outline:none;box-shadow:0 0 0 3px rgba(16,185,129,.12)}
-    input, textarea, select { font-size:16px; }
   </style>
 </head>
 <body>
-
-<header class="bg-slate-900/95 backdrop-blur-sm border-b border-slate-700 sticky top-0 z-50">
-  <div class="max-w-3xl mx-auto px-4">
-    <div class="flex justify-between items-center h-16">
-      <a href="index.html" class="text-xl font-bold gradient-text">PredicTrade</a>
-      <a href="index.html" class="text-slate-300">← 戻る</a>
+<header class="bg-slate-900/95 border-b border-slate-700 sticky top-0 z-50">
+  <div class="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center font-bold">P</div>
+      <div class="text-xl font-bold gradient-text">PredicTrade</div>
     </div>
+    <a href="index.html" class="text-slate-300 hover:text-emerald-400">イベント一覧</a>
   </div>
 </header>
 
-<main class="py-8">
+<main class="py-10">
   <div class="max-w-3xl mx-auto px-4">
-    <h2 class="text-2xl font-bold mb-6"><span class="gradient-text">新しいイベント</span>を作成</h2>
+    <h2 class="text-3xl font-bold mb-6"><span class="gradient-text">管理者</span>がイベントを作成</h2>
 
-    <div class="bg-slate-800/40 border border-slate-700 rounded-xl p-5">
-      <form id="createEventForm" class="space-y-5">
+    <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
+      <form id="createEventForm" class="space-y-4">
+        <div>
+          <label class="block text-sm text-slate-300 mb-2">ADMIN_KEY（ローカル用・必須）</label>
+          <input id="adminKey" class="form-input w-full px-4 py-3 rounded-lg text-slate-100" placeholder="VercelのADMIN_KEYを入力" required />
+          <p class="text-xs text-slate-400 mt-1">※本番は環境変数で管理。UI入力はデモ用。</p>
+        </div>
+
         <div>
           <label class="block text-sm text-slate-300 mb-2">タイトル *</label>
           <input id="eventTitle" class="form-input w-full px-4 py-3 rounded-lg text-slate-100" required />
@@ -52,7 +51,7 @@
           <select id="eventCategory" class="form-input w-full px-4 py-3 rounded-lg text-slate-100" required>
             <option value="sports">スポーツ</option>
             <option value="politics">政治</option>
-            <option value="tech">テクノロジー</option>
+            <option value="tech">テック</option>
             <option value="finance">金融</option>
             <option value="entertainment">エンタメ</option>
             <option value="other">その他</option>
@@ -65,27 +64,20 @@
         </div>
 
         <div>
-          <label class="block text-sm text-slate-300 mb-2">賞金プール（ポイント）*</label>
-          <input id="prizePool" type="number" min="100" max="10000" value="1000"
-                 class="form-input w-full px-4 py-3 rounded-lg text-slate-100" required />
+          <label class="block text-sm text-slate-300 mb-2">流動性パラメータ b（大きいほど価格が動きにくい）</label>
+          <input id="liquidityB" type="number" class="form-input w-full px-4 py-3 rounded-lg text-slate-100" value="50" min="1" required />
         </div>
 
         <div>
-          <label class="block text-sm text-slate-300 mb-2">選択肢（2〜4）*</label>
+          <label class="block text-sm text-slate-300 mb-2">初期選択肢（2〜6）*</label>
           <div id="optionsContainer" class="space-y-2">
             <input class="form-input w-full px-4 py-3 rounded-lg text-slate-100" placeholder="選択肢1" required />
             <input class="form-input w-full px-4 py-3 rounded-lg text-slate-100" placeholder="選択肢2" required />
           </div>
-          <div class="flex gap-2 mt-2">
-            <button type="button" id="addOptionBtn" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600">+ 追加</button>
-            <button type="button" id="removeOptionBtn" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 hidden">- 削除</button>
-          </div>
+          <button type="button" id="addOptionBtn" class="mt-2 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600">+ 追加</button>
         </div>
 
-        <button class="w-full bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-lg font-semibold">
-          作成する
-        </button>
-
+        <button class="w-full bg-emerald-500 hover:bg-emerald-600 rounded-lg py-3 font-semibold">作成する</button>
         <p id="msg" class="text-sm text-slate-200"></p>
       </form>
     </div>

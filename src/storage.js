@@ -15,19 +15,40 @@ export async function getEventById(id) {
   return api(`/api/events/${id}`);
 }
 
-export async function createEvent(payload) {
-  return api("/api/events", {
+export async function createEvent(payload, adminKey) {
+  // adminKeyはローカル用：?key= でもOKにしてる
+  const url = adminKey ? `/api/events?key=${encodeURIComponent(adminKey)}` : "/api/events";
+  return api(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }
 
-export async function submitPrediction({ eventId, deviceId, optionId, points, confidence }) {
+export async function addOption({ eventId, deviceId, text }) {
+  return api(`/api/events/${eventId}/addOption`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ deviceId, text }),
+  });
+}
+
+export async function buyShares({ eventId, deviceId, optionId, shares }) {
   return api(`/api/events/${eventId}/predict`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ deviceId, optionId, points, confidence }),
+    body: JSON.stringify({ deviceId, optionId, shares }),
+  });
+}
+
+export async function resolveEvent({ eventId, resultOptionId }, adminKey) {
+  const url = adminKey
+    ? `/api/events/${eventId}/resolve?key=${encodeURIComponent(adminKey)}`
+    : `/api/events/${eventId}/resolve`;
+  return api(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resultOptionId }),
   });
 }
 
@@ -56,21 +77,24 @@ export function timeRemaining(endDate) {
   return `${d}日`;
 }
 
-// ✅ votesベースで比率を算出（バックエンド互換）
-export function calcVoteStats(ev) {
-  const options = Array.isArray(ev.options) ? ev.options : [];
-  const rows = options.map((o) => ({
-    id: Number(o.id),
-    text: String(o.text ?? ""),
-    votes: Number(o.votes || 0),
-  }));
+// ===== client-side LMSR (for cost estimate) =====
+export function lmsrPrices(qArr, b) {
+  const B = Number(b);
+  const xs = qArr.map((q) => Math.exp(Number(q || 0) / B));
+  const s = xs.reduce((a, v) => a + v, 0);
+  return xs.map((v) => (s <= 0 ? 0 : v / s));
+}
 
-  const totalVotes = rows.reduce((a, b) => a + b.votes, 0);
+export function lmsrCost(qArr, b) {
+  const B = Number(b);
+  const xs = qArr.map((q) => Math.exp(Number(q || 0) / B));
+  const s = xs.reduce((a, v) => a + v, 0);
+  return B * Math.log(s);
+}
 
-  const withPct = rows.map((r) => ({
-    ...r,
-    pct: totalVotes <= 0 ? 0 : Math.round((r.votes / totalVotes) * 1000) / 10, // 0.1%
-  }));
-
-  return { totalVotes, rows: withPct };
+export function lmsrCostDelta(qArr, idx, dq, b) {
+  const before = lmsrCost(qArr, b);
+  const after = qArr.slice();
+  after[idx] = Number(after[idx] || 0) + Number(dq || 0);
+  return lmsrCost(after, b) - before;
 }

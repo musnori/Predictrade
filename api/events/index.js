@@ -1,108 +1,90 @@
-// api/_kv.js
-import { kv } from "@vercel/kv";
+import { loadStore, saveStore, ensureUser, isAdminRequest, sanitizeText, nowISO } from "../_kv.js";
 
-const KEY = "predictrade:store:v2";
+export default async function handler(req, res) {
+  try {
+    const store = await loadStore();
 
-function defaultStore() {
-  return {
-    events: [],
-    users: {},
-  };
-}
-
-function migrateStore(store) {
-  const s = store && typeof store === "object" ? store : defaultStore();
-  s.events = Array.isArray(s.events) ? s.events : [];
-  s.users = s.users && typeof s.users === "object" ? s.users : {};
-
-  for (const ev of s.events) {
-    ev.status = ev.status || "active";
-    ev.endDate = ev.endDate || new Date(Date.now() + 3600 * 1000).toISOString();
-
-    // ✅ パリミューチュエル：固定賞金なし
-    ev.totalStaked = Number(ev.totalStaked || 0);
-
-    ev.options = Array.isArray(ev.options) ? ev.options : [];
-    for (const o of ev.options) {
-      o.id = Number(o.id);
-      o.text = String(o.text ?? "");
-      o.staked = Number(o.staked || 0);
+    if (req.method === "GET") {
+      return res.status(200).json(store.events || []);
     }
 
-    ev.predictions = Array.isArray(ev.predictions) ? ev.predictions : [];
-    ev.snapshots = Array.isArray(ev.snapshots) ? ev.snapshots : [];
+    if (req.method === "POST") {
+      // ✅ 管理者のみ作成（Polymarketの「オーガナイザー」）
+      if (!isAdminRequest(req)) return res.status(401).send("admin only (set ADMIN_KEY)");
 
-    ev.participants = Number(ev.participants || 0);
-    ev.resolvedOptionId = ev.resolvedOptionId ?? null;
-    ev.resolvedAt = ev.resolvedAt ?? null;
-    ev.payoutDone = Boolean(ev.payoutDone);
-  }
+      const { title, description, category, endDate, options, liquidityB, deviceId } = req.body || {};
+      if (!deviceId) return res.status(400).send("deviceId required");
 
-  return s;
-}
+      const user = ensureUser(store, deviceId);
 
-export async function loadStore() {
-  const data = await kv.get(KEY);
-  if (!data) {
-    const init = defaultStore();
-    await kv.set(KEY, init);
-    return init;
-  }
-  const migrated = migrateStore(data);
-  await kv.set(KEY, migrated);
-  return migrated;
-}
+      const t = sanitizeText(title, 80);
+      const d = sanitizeText(description, 400);
+      const c = sanitizeText(category, 30);
 
-export async function saveStore(store) {
-  await kv.set(KEY, store);
-}
+      if (!t || !d || !c || !endDate) return res.status(400).send("missing fields");
 
-export function ensureUser(store, deviceId) {
-  if (!store.users[deviceId]) {
-    store.users[deviceId] = { name: "Guest", points: 1000 };
-  } else {
-    if (typeof store.users[deviceId].points !== "number") store.users[deviceId].points = 1000;
-    if (!store.users[deviceId].name) store.users[deviceId].name = "Guest";
-  }
-  return store.users[deviceId];
-}
+      const end = new Date(endDate).getTime();
+      if (!Number.isFinite(end)) return res.status(400).send("invalid endDate");
 
-export function isAuthorized(req) {
-  const ADMIN_KEY = process.env.ADMIN_KEY;
-  if (!ADMIN_KEY) return true; // デモは鍵なしOK（本番はADMIN_KEY入れる）
-  const keyFromHeader = req.headers["x-admin-key"];
-  const keyFromQuery = req.query?.key;
-  return keyFromHeader === ADMIN_KEY || keyFromQuery === ADMIN_KEY;
-}
+      const optTexts = Array.isArray(options)
+        ? options.map((x) => sanitizeText(x, 50)).filter(Boolean)
+        : [];
+      if (optTexts.length < 2 || optTexts.length > 6) return res.status(400).send("options must be 2..6");
 
-// ✅ 確定＆分配（固定賞金なし：totalStakedのみ）
-export function resolveAndPayout(store, ev, winningOptionId) {
-  if (!ev || ev.status === "resolved") return;
+      const b = Number(liquidityB ?? 50);
+      if (!Number.isFinite(b) || b <= 0) return res.status(400).send("invalid liquidityB");
 
-  const winId = Number(winningOptionId);
-  const winOpt = (ev.options || []).find((o) => Number(o.id) === winId);
-  if (!winOpt) throw new Error("winning option not found");
+      const nextId = (store.events || []).reduce((m, e) => Math.max(m, Number(e.id) || 0), 0) + 1;
 
-  const totalPool = Number(ev.totalStaked || 0);        // ←固定賞金なし
-  const winnersSum = Number(winOpt.staked || 0);
+      const ev = {
+        id: nextId,
+        title: t,
+        description: d,
+        category: c,
+        status: "active", // active | resolved
+        createdAt: nowISO(),
+        endDate: new Date(end).toISOString(),
 
-  // 勝ち側に誰も賭けてない場合、分配できない（ゼロ割）
-  if (totalPool > 0 && winnersSum > 0) {
-    for (const pred of ev.predictions || []) {
-      if (Number(pred.optionId) !== winId) continue;
+        organizerDeviceId: deviceId,
+        organizerName: user.name,
 
-      const payout = (totalPool * Number(pred.points || 0)) / winnersSum;
-      const uid = pred.deviceId;
-      if (!uid) continue;
+        // ✅ LMSR liquidity
+        liquidityB: b,
 
-      const u = ensureUser(store, uid);
-      u.points += Math.floor(payout); // 端数は切り捨て
-      pred.payout = Math.floor(payout);
+        // ✅ outcomes (each has sharesOutstanding q)
+        options: optTexts.map((text, i) => ({
+          id: i + 1,
+          text,
+          q: 0, // outstanding shares
+          createdAt: nowISO(),
+          createdBy: "organizer",
+        })),
+
+        // holdings: deviceId -> { [optionId]: shares }
+        holdings: {},
+
+        trades: [], // { deviceId, name, optionId, shares, cost, createdAt }
+        snapshots: [], // { t, prices: { [optionId]: price } }
+
+        resolvedAt: null,
+        resultOptionId: null,
+      };
+
+      // 初期スナップショット（均等）
+      ev.snapshots.push({
+        t: nowISO(),
+        prices: Object.fromEntries(ev.options.map((o) => [o.id, 1 / ev.options.length])),
+      });
+
+      store.events.unshift(ev);
+      await saveStore(store);
+
+      return res.status(200).json(ev);
     }
-  }
 
-  ev.status = "resolved";
-  ev.resolvedOptionId = winId;
-  ev.resolvedAt = new Date().toISOString();
-  ev.payoutDone = true;
+    return res.status(405).send("Method Not Allowed");
+  } catch (e) {
+    console.error("events/index error:", e);
+    return res.status(500).send(`events index failed: ${e?.message || String(e)}`);
+  }
 }
