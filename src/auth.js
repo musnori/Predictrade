@@ -1,12 +1,13 @@
 // src/auth.js
 const LS_DEVICE = "predictrade.deviceId.v1";
-const LS_NAME = "predictrade.name.v1";
+const SS_NAME = "predictrade.sessionName.v1"; // ✅ セッションだけ保持（タブ閉じたら消える）
 
 function getOrCreateDeviceId() {
   let id = localStorage.getItem(LS_DEVICE);
   if (!id) {
-    id = (globalThis.crypto?.randomUUID?.() ??
-      `dev_${Math.random().toString(16).slice(2)}_${Date.now()}`);
+    id =
+      globalThis.crypto?.randomUUID?.() ??
+      `dev_${Math.random().toString(16).slice(2)}_${Date.now()}`;
     localStorage.setItem(LS_DEVICE, id);
   }
   return id;
@@ -18,7 +19,7 @@ async function upsertUserOnServer(deviceId, name) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ deviceId, name }),
   });
-  if (!res.ok) throw new Error("ユーザー登録に失敗しました");
+  if (!res.ok) throw new Error(await res.text());
   return res.json(); // { ok, user }
 }
 
@@ -37,7 +38,7 @@ function showNameModal() {
           placeholder="ニックネーム（20文字まで）" />
         <button id="pt-join"
           style="margin-top:12px;width:100%;padding:12px;border-radius:12px;background:#10b981;color:white;font-weight:700;border:none;cursor:pointer;">
-          参加する
+          ログイン
         </button>
         <div id="pt-err" style="margin-top:10px;font-size:12px;color:#fca5a5;min-height:16px;"></div>
       </div>
@@ -65,53 +66,30 @@ function showNameModal() {
   });
 }
 
+function renderHeader(user) {
+  const pointsEl = document.getElementById("userPoints");
+  if (pointsEl) pointsEl.textContent = Number(user?.points || 0).toLocaleString();
+
+  const nameEl = document.getElementById("userName");
+  if (nameEl) nameEl.textContent = String(user?.name || "");
+}
+
 export async function initAuthAndRender() {
-  // initAuthAndRender 内の後半だけ差し替え
-
-  const data = await upsertUserOnServer(deviceId, name);
-
-  const serverName = (data?.user?.name ?? name).trim();
-  const points = Math.floor(data?.user?.points ?? 0);
-
-  // サーバ側で名前が調整されていたら、ローカルも追従
-  if (serverName && serverName !== name) {
-    localStorage.setItem(LS_NAME, serverName);
-    name = serverName;
-  }
-
-  const pointsEl = document.getElementById("userPoints");
-  if (pointsEl) pointsEl.textContent = points.toLocaleString();
-
-  const nameEl = document.getElementById("userName");
-  if (nameEl) nameEl.textContent = serverName;
-
-  return { deviceId, name: serverName, points };
-
-}
-
-
-export function logout() {
-  localStorage.removeItem(LS_NAME);
-  // deviceIdも消したいなら下も外さずに
-  // localStorage.removeItem(LS_DEVICE);
-  location.reload();
-}
-
-export async function rename() {
   const deviceId = getOrCreateDeviceId();
+
+  // ✅ 毎回ログインさせたいので、localStorageではなく「sessionStorage」を使う
+  // さらに「開いたら必ず出したい」なら、ここで sessionStorage も無視してOK
+  // 今回は要望どおり「開いたら必ず出す」なので、毎回モーダル表示にする：
   const name = await showNameModal();
-  localStorage.setItem(LS_NAME, name);
+  sessionStorage.setItem(SS_NAME, name);
+
   const data = await upsertUserOnServer(deviceId, name);
 
-  const serverName = (data?.user?.name ?? name).trim();
-  if (serverName && serverName !== name) localStorage.setItem(LS_NAME, serverName);
+  // サーバ側で名前が調整される可能性があるので、サーバ値を正にする
+  const user = data?.user ? { ...data.user } : { name, points: 0 };
+  user.points = Number(user.points || 0);
+  user.name = String(user.name || name);
 
-  // 画面表示も即反映
-  const pointsEl = document.getElementById("userPoints");
-  if (pointsEl) pointsEl.textContent = Number(data?.user?.points || 0).toLocaleString();
-
-  const nameEl = document.getElementById("userName");
-  if (nameEl) nameEl.textContent = serverName;
-
-  return data?.user;
+  renderHeader(user);
+  return { deviceId, name: user.name, points: user.points, user };
 }
