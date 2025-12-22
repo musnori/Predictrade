@@ -1,6 +1,6 @@
 // api/users/[deviceId].js (PM v2 history)
 import { kv } from "@vercel/kv";
-import { getUser, listEventIds, getEvent, k, PRICE_SCALE } from "../_kv.js";
+import { getUser, listEventIds, getEvent, k, PRICE_SCALE, listAuditLogs } from "../_kv.js";
 
 function normStr(v) {
   return String(v ?? "");
@@ -42,6 +42,13 @@ function tradeSideForUser(trade, userId) {
 function costPoints(priceBps, qty) {
   const units = Number(priceBps || 0) * Number(qty || 0);
   return units / PRICE_SCALE;
+}
+
+function orderSideLabel(side) {
+  const s = String(side || "").toUpperCase();
+  if (s === "BUY") return "買い";
+  if (s === "SELL") return "売り";
+  return "-";
 }
 
 export default async function handler(req, res) {
@@ -92,9 +99,45 @@ export default async function handler(req, res) {
             optionText: optionText(side.outcome),
             shares: qty,
             cost: costPoints(priceBps, qty),
+            kind: "約定",
+            sideLabel: null,
 
             // status
             outcome: outcomeLabel(ev, side.outcome),
+          });
+        }
+
+        const auditLogs = await listAuditLogs(eventId);
+        for (const log of Array.isArray(auditLogs) ? auditLogs : []) {
+          if (!log || typeof log !== "object") continue;
+          if (normStr(log.type) !== "order") continue;
+          if (normStr(log.by) !== normStr(deviceId)) continue;
+
+          const priceBps = Number(log.priceBps || 0);
+          const qty = Number(log.qty || 0);
+          const outcome = log.outcome;
+
+          history.push({
+            // event
+            eventId: ev.id,
+            eventTitle: ev.title ?? "-",
+            category: ev.category ?? "-",
+            endDate: ev.endDate ?? null,
+            eventStatus: ev.status ?? "open",
+            resultOptionId: ev.result ?? null,
+
+            // order
+            createdAt: log.at ?? null,
+            optionId: outcome,
+            optionText: optionText(outcome),
+            shares: qty,
+            cost: costPoints(priceBps, qty),
+            kind: "注文",
+            sideLabel: orderSideLabel(log.side),
+            priceBps,
+
+            // status
+            outcome: outcomeLabel(ev, outcome),
           });
         }
       }

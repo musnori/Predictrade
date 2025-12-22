@@ -190,6 +190,25 @@
 
           <div class="text-sm text-amber-200" id="msg"></div>
 
+          <section id="adminGate" class="hidden card rounded-3xl p-6">
+            <div class="font-bold">管理者コード</div>
+            <div class="mt-3 text-sm text-slate-400">管理者のみ結果確定・分配操作ができます。</div>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <input
+                id="adminKeyEntry"
+                class="flex-1 min-w-[220px] px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 text-sm"
+                placeholder="ADMIN_KEY を入力"
+              />
+              <button
+                id="adminKeySaveBtn"
+                class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold"
+              >
+                管理者モードにする
+              </button>
+            </div>
+            <div id="adminGateMsg" class="mt-2 text-sm text-amber-200"></div>
+          </section>
+
           <section id="adminPanel" class="hidden card rounded-3xl p-6">
             <div class="flex items-center justify-between">
               <div class="font-bold">管理者</div>

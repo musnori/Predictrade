@@ -15,6 +15,18 @@ function badgeClass(outcome) {
   return "bg-slate-800/40 text-slate-200 border-slate-600/30";
 }
 
+function kindLabel(kind) {
+  if (kind === "注文") return "注文";
+  if (kind === "約定") return "約定";
+  return "履歴";
+}
+
+function priceLabel(priceBps) {
+  const bps = Number(priceBps || 0);
+  if (!Number.isFinite(bps) || bps <= 0) return "";
+  return `${Math.round(bps / 100)}%`;
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await initAuthAndRender();
 
@@ -42,6 +54,11 @@ document.addEventListener("DOMContentLoaded", async () => {
             <div class="font-bold text-lg truncate">${h.eventTitle}</div>
             <div class="text-slate-300 text-sm mt-1">
               選択肢: <span class="text-slate-100 font-semibold">${h.optionText}</span>
+            </div>
+            <div class="text-xs text-slate-400 mt-1">
+              ${kindLabel(h.kind)}
+              ${h.sideLabel ? `・${h.sideLabel}` : ""}
+              ${priceLabel(h.priceBps) ? `・${priceLabel(h.priceBps)}` : ""}
             </div>
           </div>
 
