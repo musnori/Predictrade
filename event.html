@@ -7,390 +7,200 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       body {
-        background: radial-gradient(circle at top, rgba(30, 64, 175, 0.2), transparent 45%),
-          #0b1020;
+        background: #f8fafc;
+        color: #0f172a;
       }
       .card {
-        background: rgba(15, 23, 42, 0.7);
-        border: 1px solid rgba(148, 163, 184, 0.12);
-        box-shadow: 0 20px 45px rgba(15, 23, 42, 0.25);
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+        border-radius: 24px;
       }
-      .pill {
-        background: rgba(148, 163, 184, 0.12);
-        border: 1px solid rgba(148, 163, 184, 0.2);
+      .chip {
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        color: #475569;
       }
-      .opt { background: rgba(15, 23, 42, .55); border: 1px solid rgba(148,163,184,.18); }
-      .opt.selected { border-color: rgba(16,185,129,.55); box-shadow: 0 0 0 2px rgba(16,185,129,.15) inset; }
-      .sheet-hidden { transform: translateY(110%); opacity: 0; pointer-events: none; }
-      .overlay-hidden { opacity: 0; pointer-events: none; }
+      .outcome-row {
+        transition: background 0.2s ease, border-color 0.2s ease;
+      }
+      .outcome-row:hover {
+        background: #f8fafc;
+      }
+      .outcome-row.selected {
+        background: #f0fdf4;
+        border-left: 4px solid #10b981;
+      }
+      .tab-active {
+        background: #0f172a;
+        color: #f8fafc;
+      }
+      .side-active-yes {
+        background: #ecfdf3;
+        border-color: #10b981;
+        color: #047857;
+      }
+      .side-active-no {
+        background: #fff1f2;
+        border-color: #f43f5e;
+        color: #be123c;
+      }
+      .btn-primary {
+        background: #0f172a;
+        color: #f8fafc;
+      }
+      .btn-primary:hover {
+        background: #111827;
+      }
+      .btn-yes {
+        background: #ecfdf3;
+        border: 1px solid #10b981;
+        color: #047857;
+      }
+      .btn-no {
+        background: #fff1f2;
+        border: 1px solid #f43f5e;
+        color: #be123c;
+      }
+      .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+      }
     </style>
   </head>
 
-  <body class="text-slate-100">
-    <header class="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-950/70 backdrop-blur">
-      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+  <body class="min-h-screen">
+    <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-emerald-500/90 flex items-center justify-center font-bold text-slate-900">P</div>
-          <div>
-            <div class="font-semibold text-lg leading-tight">PredicTrade</div>
-            <div class="text-xs text-slate-400">Prediction Market</div>
+          <div class="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center font-bold text-white">
+            P
+          </div>
+          <div class="font-semibold text-lg">PredicTrade</div>
+        </div>
+
+        <div class="flex-1 hidden md:flex justify-center">
+          <div class="w-full max-w-md">
+            <input
+              type="text"
+              placeholder="Search markets"
+              class="w-full rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            />
           </div>
         </div>
 
-        <nav class="hidden md:flex items-center gap-6 text-sm text-slate-300">
-          <a href="index.html" class="hover:text-white">Markets</a>
-          <a href="dashboard.html" class="hover:text-white">Dashboard</a>
-          <a href="history.html" class="hover:text-white">History</a>
-        </nav>
-
-        <div class="relative shrink-0 text-sm">
-          <button
-            id="userMenuBtn"
-            class="text-right leading-tight px-2 py-1 rounded-lg hover:bg-slate-900/50 active:bg-slate-900/70"
-            aria-haspopup="menu"
-            aria-expanded="false"
-          >
-            <div class="text-slate-200 font-semibold" id="userName">-</div>
-            <div class="text-slate-300">
-              <span class="text-slate-400">ポイント:</span>
-              <span id="userPoints" class="text-emerald-400 font-bold">-</span>
-            </div>
-          </button>
-
-          <div
-            id="userMenu"
-            class="hidden absolute right-0 mt-2 w-44 rounded-xl bg-slate-950/95 border border-slate-800 shadow-2xl backdrop-blur z-[999]"
-            role="menu"
-          >
-            <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">イベント</a>
-            <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">ダッシュボード</a>
-            <a href="history.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">履歴</a>
+        <div class="flex items-center gap-3">
+          <div id="authButtons" class="flex items-center gap-2 text-sm">
+            <button class="px-3 py-2 rounded-full border border-slate-200 text-slate-600">Log in</button>
+            <button class="px-3 py-2 rounded-full bg-slate-900 text-white">Sign up</button>
+          </div>
+          <div id="userSummary" class="hidden text-right text-sm">
+            <div class="font-semibold" id="userName">-</div>
+            <div class="text-slate-500">Pts <span id="userPoints">-</span></div>
           </div>
         </div>
       </div>
     </header>
 
     <main class="max-w-6xl mx-auto px-4 py-6">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <button id="backBtn" class="px-4 py-2 rounded-xl pill hover:bg-slate-900/80">
-          ← Back
-        </button>
-        <div id="resolvedBadge" class="hidden px-3 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/40 text-emerald-200 text-sm"></div>
-      </div>
+      <div id="errorBanner" class="hidden mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"></div>
 
-      <section class="mt-6 grid lg:grid-cols-[minmax(0,1fr)_360px] gap-6">
+      <section class="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-6">
         <div class="space-y-6">
-          <div class="card rounded-3xl p-6">
-            <div class="flex flex-wrap items-center gap-3 text-sm">
-              <span id="categoryBadge" class="pill px-3 py-1 rounded-full text-slate-200">-</span>
-              <span id="eventMeta" class="text-slate-400">-</span>
-            </div>
-            <h1 class="mt-4 text-3xl md:text-4xl font-bold" id="title">-</h1>
-            <p class="mt-3 text-slate-300" id="desc">-</p>
-
-            <div class="mt-6 grid sm:grid-cols-3 gap-3 text-sm">
-              <div class="pill rounded-2xl p-4">
-                <div class="text-slate-400">Yes price</div>
-                <div class="mt-2 text-2xl font-bold" id="marketPriceYes">-</div>
+          <div class="card p-6">
+            <div class="flex items-start gap-4">
+              <div class="h-14 w-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-semibold">
+                EV
               </div>
-              <div class="pill rounded-2xl p-4">
-                <div class="text-slate-400">No price</div>
-                <div class="mt-2 text-2xl font-bold" id="marketPriceNo">-</div>
-              </div>
-              <div class="pill rounded-2xl p-4">
-                <div class="text-slate-400">Time remaining</div>
-                <div class="mt-2 text-2xl font-bold" id="marketTime">-</div>
+              <div class="flex-1">
+                <div class="text-sm text-slate-500" id="eventMeta">Vol — • End date —</div>
+                <h1 id="eventTitle" class="mt-2 text-2xl md:text-3xl font-semibold text-slate-900">-</h1>
+                <p id="eventDesc" class="mt-2 text-sm text-slate-500">-</p>
               </div>
             </div>
-
-            <div class="mt-4 grid sm:grid-cols-4 gap-3 text-xs">
-              <div class="pill rounded-2xl p-3">
-                <div class="text-slate-400">Best bid (YES)</div>
-                <div class="mt-1 font-semibold" id="bestBidYes">-</div>
-              </div>
-              <div class="pill rounded-2xl p-3">
-                <div class="text-slate-400">Best ask (YES)</div>
-                <div class="mt-1 font-semibold" id="bestAskYes">-</div>
-              </div>
-              <div class="pill rounded-2xl p-3">
-                <div class="text-slate-400">Spread</div>
-                <div class="mt-1 font-semibold" id="marketSpread">-</div>
-              </div>
-              <div class="pill rounded-2xl p-3">
-                <div class="text-slate-400">Display source</div>
-                <div class="mt-1 font-semibold" id="displaySource">-</div>
-              </div>
-            </div>
-
-            <div class="mt-5">
-              <div class="flex items-center justify-between text-xs text-slate-400">
-                <span>Probability split</span>
-                <span id="marketSplitText">-</span>
-              </div>
-              <div class="mt-2 h-3 rounded-full bg-slate-800 overflow-hidden">
-                <div class="h-full bg-emerald-500" id="marketYesBar" style="width: 50%"></div>
-              </div>
+            <div class="mt-5 flex flex-wrap gap-3 text-sm">
+              <div class="chip px-3 py-1 rounded-full">Vol <span id="eventVol">—</span></div>
+              <div class="chip px-3 py-1 rounded-full">End date <span id="eventEnd">—</span></div>
             </div>
           </div>
 
-          <section id="rangeOutcomes" class="hidden card rounded-3xl overflow-hidden">
-            <div class="px-6 py-4 border-b border-slate-800/80">
-              <div class="text-slate-200 font-semibold">レンジ</div>
-              <div class="text-xs text-slate-400">範囲ごとの結果に賭けられます</div>
-            </div>
-            <div id="rangeRows" class="divide-y divide-slate-800/80"></div>
-          </section>
-
-          <section class="card rounded-3xl overflow-hidden">
-            <div class="px-6 py-4 border-b border-slate-800/80">
-              <div class="text-slate-200 font-semibold">Market ladder</div>
-              <div class="text-xs text-slate-400">Polymarket-style price ladder</div>
-            </div>
-            <div id="ladderWrap" class="bg-slate-900/40">
-              <div class="grid grid-cols-3 gap-2 px-6 py-3 text-xs text-slate-400 border-b border-slate-800/80">
-                <div>YES</div><div class="text-center">価格</div><div class="text-right">NO</div>
-              </div>
-              <div id="ladderRows"></div>
-            </div>
-          </section>
-
-          <section class="card rounded-3xl p-6" id="positionsPanel">
+          <div class="card p-6">
             <div class="flex items-center justify-between">
               <div>
-                <div class="text-slate-200 font-semibold">My positions</div>
-                <div class="text-xs text-slate-400">保有株と評価額</div>
+                <div class="text-sm text-slate-500">Probability</div>
+                <div class="text-lg font-semibold">Outcome price history</div>
               </div>
-              <span class="text-xs text-slate-500" id="positionsValue">-</span>
-            </div>
-            <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <div class="pill rounded-2xl p-4">
-                <div class="text-slate-400">YES shares</div>
-                <div class="mt-2 text-xl font-bold" id="posYes">0</div>
-              </div>
-              <div class="pill rounded-2xl p-4">
-                <div class="text-slate-400">NO shares</div>
-                <div class="mt-2 text-xl font-bold" id="posNo">0</div>
+              <div class="flex gap-2 text-xs">
+                <button class="px-3 py-1 rounded-full chip" data-range="1H">1H</button>
+                <button class="px-3 py-1 rounded-full chip" data-range="6H">6H</button>
+                <button class="px-3 py-1 rounded-full chip" data-range="1D">1D</button>
+                <button class="px-3 py-1 rounded-full chip" data-range="1W">1W</button>
+                <button class="px-3 py-1 rounded-full chip" data-range="1M">1M</button>
+                <button class="px-3 py-1 rounded-full tab-active" data-range="ALL">ALL</button>
               </div>
             </div>
-          </section>
-
-          <section class="card rounded-3xl p-6">
-            <div class="text-slate-200 font-semibold">Rules</div>
-            <div class="mt-2 text-sm text-slate-300 whitespace-pre-line" id="rulesText">-</div>
-            <div class="mt-4 text-xs text-slate-400">Resolution source</div>
-            <div class="text-sm text-slate-300" id="resolutionSourceText">-</div>
-            <div class="mt-5 text-slate-200 font-semibold">Additional context</div>
-            <div class="mt-2 text-sm text-slate-300 space-y-3" id="rulesUpdates"></div>
-          </section>
-
-          <section class="card rounded-3xl p-6">
-            <div class="text-slate-200 font-semibold">Recent trades</div>
-            <div class="mt-3 text-sm text-slate-300 space-y-2" id="tradeRows"></div>
-          </section>
-
-          <div class="text-sm text-amber-200" id="msg"></div>
-
-          <section id="adminGate" class="hidden card rounded-3xl p-6">
-            <div class="font-bold">管理者コード</div>
-            <div class="mt-3 text-sm text-slate-400">管理者のみ結果確定・分配操作ができます。</div>
-            <div class="mt-4 flex flex-wrap gap-2">
-              <input
-                id="adminKeyEntry"
-                class="flex-1 min-w-[220px] px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 text-sm"
-                placeholder="ADMIN_KEY を入力"
-              />
-              <button
-                id="adminKeySaveBtn"
-                class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold"
-              >
-                管理者モードにする
-              </button>
+            <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-4">
+              <svg id="outcomeChart" viewBox="0 0 100 40" class="w-full h-52"></svg>
             </div>
-            <div id="adminGateMsg" class="mt-2 text-sm text-amber-200"></div>
-          </section>
+            <div id="chartLegend" class="mt-4 flex flex-wrap gap-4 text-xs text-slate-500"></div>
+          </div>
 
-          <section id="adminPanel" class="hidden card rounded-3xl p-6">
-            <div class="flex items-center justify-between">
-              <div class="font-bold">管理者</div>
-              <button id="adminLogoutBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">ログアウト</button>
+          <div class="card overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200">
+              <div class="text-sm text-slate-500">Outcomes</div>
+              <div class="text-lg font-semibold">Select a range to trade</div>
             </div>
-
-            <div class="mt-4 flex gap-2 flex-wrap">
-              <button id="adminRefreshBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">参加者更新</button>
-              <button id="adminDeleteEventBtn" class="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-sm">イベント削除</button>
-            </div>
-
-            <div class="mt-5 p-4 rounded-2xl bg-slate-900/40 border border-slate-700">
-              <div class="font-semibold mb-2">結果確定（分配）</div>
-              <div class="flex items-center gap-2 flex-wrap">
-                <select
-                  id="adminResolveSelect"
-                  class="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100"
-                ></select>
-                <button
-                  id="adminResolveBtn"
-                  class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold"
-                >
-                  結果を確定して分配
-                </button>
-              </div>
-              <div id="adminResolveMsg" class="mt-2 text-sm text-amber-200"></div>
-              <div class="mt-2 text-xs text-slate-500">※取り消し不可（確定後は賭けられません）</div>
-            </div>
-
-            <div class="mt-4 p-4 rounded-2xl bg-slate-900/40 border border-slate-700">
-              <div class="font-semibold mb-2">Clarification（追加コンテキスト）</div>
-              <textarea
-                id="adminClarifyText"
-                class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 text-sm"
-                rows="3"
-                placeholder="ルール補足を追加"
-              ></textarea>
-              <div class="mt-2 flex items-center gap-2">
-                <input
-                  id="adminClarifyBy"
-                  class="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 text-sm"
-                  placeholder="admin name"
-                />
-                <button
-                  id="adminClarifyBtn"
-                  class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm"
-                >
-                  追加
-                </button>
-              </div>
-              <div id="adminClarifyMsg" class="mt-2 text-sm text-amber-200"></div>
-            </div>
-
-            <div class="mt-4 space-y-2" id="adminParticipants"></div>
-          </section>
+            <div id="outcomeRows" class="divide-y divide-slate-200"></div>
+          </div>
         </div>
 
-        <aside class="space-y-6">
-          <div class="card rounded-3xl p-6">
-            <div class="flex items-center justify-between">
-              <div>
-                <div class="text-xs text-slate-400">Trade</div>
-                <div class="text-lg font-semibold">Quick buy</div>
-              </div>
-              <span class="text-xs text-slate-500">Market order</span>
+        <aside class="lg:sticky lg:top-24 h-fit">
+          <div class="card p-6 space-y-4">
+            <div>
+              <div class="text-xs text-slate-500">Selected outcome</div>
+              <div id="selectedOutcomeLabel" class="text-lg font-semibold text-slate-900">-</div>
+              <div class="text-xs text-slate-500 mt-1">Price <span id="selectedPrice">—</span></div>
             </div>
 
-            <div class="mt-4 grid gap-3">
-              <button id="quickYesBtn" class="w-full rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-4 text-left hover:bg-emerald-500/20">
-                <div class="text-sm text-emerald-200">Buy YES</div>
-                <div class="mt-1 text-2xl font-semibold" id="quickYesPrice">-</div>
-              </button>
-              <button id="quickNoBtn" class="w-full rounded-2xl border border-sky-400/40 bg-sky-500/10 px-4 py-4 text-left hover:bg-sky-500/20">
-                <div class="text-sm text-sky-200">Buy NO</div>
-                <div class="mt-1 text-2xl font-semibold" id="quickNoPrice">-</div>
-              </button>
+            <div class="flex gap-2 text-sm">
+              <button id="tradeBuyTab" class="flex-1 px-3 py-2 rounded-full border border-slate-200 tab-active">Buy</button>
+              <button id="tradeSellTab" class="flex-1 px-3 py-2 rounded-full border border-slate-200">Sell</button>
             </div>
 
-            <div class="mt-4 text-xs text-slate-500">クリックすると取引シートが開きます。</div>
-          </div>
-
-          <div class="card rounded-3xl p-6">
-            <div class="flex items-center justify-between">
-              <div>
-                <div class="text-xs text-slate-400">Orderbook</div>
-                <div class="text-lg font-semibold">YES / NO</div>
-              </div>
-              <span class="text-xs text-slate-500" id="orderbookStatus">-</span>
+            <div class="flex gap-2 text-sm">
+              <button id="sideYesBtn" class="flex-1 px-3 py-2 rounded-full border border-emerald-200 side-active-yes">Yes</button>
+              <button id="sideNoBtn" class="flex-1 px-3 py-2 rounded-full border border-rose-200">No</button>
             </div>
 
-            <div class="mt-4 grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <div class="text-xs text-slate-400 mb-2">YES bids</div>
-                <div class="space-y-2" id="yesBids"></div>
-                <div class="text-xs text-slate-400 mt-4 mb-2">YES asks</div>
-                <div class="space-y-2" id="yesAsks"></div>
-              </div>
-              <div>
-                <div class="text-xs text-slate-400 mb-2">NO bids</div>
-                <div class="space-y-2" id="noBids"></div>
-                <div class="text-xs text-slate-400 mt-4 mb-2">NO asks</div>
-                <div class="space-y-2" id="noAsks"></div>
-              </div>
+            <div>
+              <label class="text-xs text-slate-500" for="tradeAmount">Amount</label>
+              <input
+                id="tradeAmount"
+                type="number"
+                min="1"
+                value="1"
+                class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200"
+              />
             </div>
-          </div>
 
-          <div class="card rounded-3xl p-6" id="myOrders">
-            <!-- JSで差し込み -->
+            <div class="grid grid-cols-4 gap-2 text-xs">
+              <button class="chip rounded-full px-2 py-1" data-add="1">+$1</button>
+              <button class="chip rounded-full px-2 py-1" data-add="20">+$20</button>
+              <button class="chip rounded-full px-2 py-1" data-add="100">+$100</button>
+              <button class="chip rounded-full px-2 py-1" data-add="max">Max</button>
+            </div>
+
+            <button id="tradeSubmit" class="btn-primary w-full rounded-full py-3 text-sm font-semibold">
+              Trade
+            </button>
+            <div class="text-xs text-slate-400" id="tradeHint">Trades are simulated for now.</div>
           </div>
         </aside>
       </section>
     </main>
 
-    <div id="sheetOverlay" class="fixed inset-0 z-40 bg-black/60 transition-opacity duration-200 overlay-hidden"></div>
-
-    <div id="sheet" class="fixed left-0 right-0 bottom-0 z-50 transition-all duration-200 sheet-hidden" aria-hidden="true">
-      <div class="max-w-4xl mx-auto px-4 pb-4">
-        <div class="rounded-3xl bg-slate-950 border border-slate-800 overflow-hidden shadow-2xl">
-          <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-            <div class="text-sm text-slate-400">Order</div>
-            <button id="sheetClose" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">閉じる</button>
-          </div>
-
-          <div class="px-4 py-4">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-sm font-bold">PT</div>
-              <div class="flex-1">
-                <div id="sheetOptionText" class="font-semibold">-</div>
-                <div class="text-sm text-slate-400">
-                  <span id="sheetSideLabel">Yes</span>
-                  <span class="mx-2">•</span>
-                  <span id="sheetProb">-</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="mt-4 flex items-center gap-2">
-              <button id="orderBuyBtn" class="flex-1 px-3 py-2 rounded-lg bg-emerald-600/20 border border-emerald-600/40 text-emerald-200 text-sm">Buy</button>
-              <button id="orderSellBtn" class="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm">Sell</button>
-            </div>
-
-            <div class="mt-4 flex items-center justify-between">
-              <button id="minusBtn" class="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 text-2xl">−</button>
-
-              <div class="text-center flex-1">
-                <div class="text-5xl font-extrabold tracking-tight">
-                  <span id="betBig">0</span><span class="text-slate-400 text-2xl ml-2" id="betUnit">pt</span>
-                </div>
-                <input
-                  id="betPoints"
-                  type="number"
-                  min="0"
-                  step="1"
-                  inputmode="numeric"
-                  class="mt-3 w-full max-w-xs mx-auto px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-center text-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  placeholder="0"
-                />
-                <div class="mt-2 text-sm text-slate-400">
-                  <span id="payout">-</span>
-                </div>
-              </div>
-
-              <button id="plusBtn" class="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 text-2xl">＋</button>
-            </div>
-
-            <div class="mt-4 flex gap-2 flex-wrap">
-              <button class="quickBtn px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm" data-add="10">+10</button>
-              <button class="quickBtn px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm" data-add="50">+50</button>
-              <button class="quickBtn px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm" data-add="100">+100</button>
-              <button id="maxBtn" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm">Max</button>
-            </div>
-
-            <button id="tradeBtn" class="mt-5 w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 font-bold text-lg">
-              賭ける
-            </button>
-
-            <div class="mt-2 text-xs text-slate-500">By trading, you agree to the Terms of Use.</div>
-            <div class="mt-3 text-sm text-amber-200" id="sheetMsg"></div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <div id="toast" class="fixed bottom-6 right-6 hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-xl"></div>
 
     <script type="module" src="/src/event.js"></script>
   </body>
