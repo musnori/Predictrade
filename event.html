@@ -38,9 +38,9 @@
         </div>
 
         <nav class="hidden md:flex items-center gap-6 text-sm text-slate-300">
-          <a href="index.html" class="hover:text-white">Markets</a>
-          <a href="dashboard.html" class="hover:text-white">Dashboard</a>
-          <a href="history.html" class="hover:text-white">History</a>
+          <a href="index.html" class="hover:text-white">イベント</a>
+          <a href="dashboard.html" class="hover:text-white">ダッシュボード</a>
+          <a href="history.html" class="hover:text-white">履歴</a>
         </nav>
 
         <div class="relative shrink-0 text-sm">
@@ -219,6 +219,7 @@
               <button id="adminRefreshBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">参加者更新</button>
               <button id="adminDeleteEventBtn" class="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-sm">イベント削除</button>
             </div>
+            <div id="adminDeleteMsg" class="mt-2 text-sm text-amber-200"></div>
 
             <div class="mt-5 p-4 rounded-2xl bg-slate-900/40 border border-slate-700">
               <div class="font-semibold mb-2">結果確定（分配）</div>
@@ -239,7 +240,7 @@
             </div>
 
             <div class="mt-4 p-4 rounded-2xl bg-slate-900/40 border border-slate-700">
-              <div class="font-semibold mb-2">Clarification（追加コンテキスト）</div>
+              <div class="font-semibold mb-2">追加コンテキスト</div>
               <textarea
                 id="adminClarifyText"
                 class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 text-sm"

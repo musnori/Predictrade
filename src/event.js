@@ -9,6 +9,7 @@ import {
   cancelOrder,
   addClarification,
   resolveEvent,
+  deleteEvent,
 } from "./storage.js";
 
 let auth;
@@ -695,6 +696,8 @@ async function renderAdminPanel() {
 async function handleAdminResolve() {
   const msg = document.getElementById("adminResolveMsg");
   if (msg) msg.textContent = "";
+  const deleteMsg = document.getElementById("adminDeleteMsg");
+  if (deleteMsg) deleteMsg.textContent = "";
   const key = getAdminKey();
   if (!key) return;
   const select = document.getElementById("adminResolveSelect");
@@ -720,6 +723,28 @@ async function handleAdminResolve() {
     await resolveEvent({ eventId: currentEvent().id, result }, key);
     await refresh();
     if (msg) msg.textContent = "確定しました";
+  } catch (e) {
+    if (msg) msg.textContent = String(e?.message || e);
+  }
+}
+
+async function handleAdminDelete() {
+  const msg = document.getElementById("adminDeleteMsg");
+  if (msg) msg.textContent = "";
+  const key = getAdminKey();
+  if (!key) return;
+  const target = ev?.type === "range_parent" ? ev : currentEvent();
+  if (!target) return;
+
+  const confirmed = confirm("このイベントを削除しますか？（元に戻せません）");
+  if (!confirmed) return;
+
+  try {
+    await deleteEvent(target.id, key);
+    if (msg) msg.textContent = "イベントを削除しました";
+    setTimeout(() => {
+      location.href = "index.html";
+    }, 600);
   } catch (e) {
     if (msg) msg.textContent = String(e?.message || e);
   }
@@ -845,6 +870,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("adminResolveBtn")?.addEventListener("click", async () => {
     await handleAdminResolve();
   });
+  document.getElementById("adminDeleteEventBtn")?.addEventListener("click", async () => {
+    await handleAdminDelete();
+  });
   document.getElementById("adminClarifyBtn")?.addEventListener("click", async () => {
     await handleAdminClarify();
   });
@@ -872,13 +900,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (input) input.value = "";
     await renderAdminPanel();
   });
-  const deleteBtn = document.getElementById("adminDeleteEventBtn");
-  if (deleteBtn) {
-    deleteBtn.disabled = true;
-    deleteBtn.title = "未実装";
-    deleteBtn.classList.add("opacity-60", "cursor-not-allowed");
-  }
-
   // trade
   document.getElementById("tradeBtn")?.addEventListener("click", async () => {
     setSheetMsg("");
