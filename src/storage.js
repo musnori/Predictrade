@@ -82,8 +82,8 @@ export async function resolveEvent({ eventId, result }, adminKey) {
 
 export async function deleteEvent(eventId, adminKey) {
   const url = adminKey
-    ? `/api/events/${encodeURIComponent(eventId)}/delete?key=${encodeURIComponent(adminKey)}`
-    : `/api/events/${encodeURIComponent(eventId)}/delete`;
+    ? `/api/events/${encodeURIComponent(eventId)}?key=${encodeURIComponent(adminKey)}`
+    : `/api/events/${encodeURIComponent(eventId)}`;
   return api(url, {
     method: "POST",
   });
