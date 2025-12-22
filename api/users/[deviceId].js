@@ -1,5 +1,6 @@
-// api/users/[deviceId].js
-import { loadStore } from "../_kv.js";
+// api/users/[deviceId].js (PM v2 history)
+import { kv } from "@vercel/kv";
+import { getUser, listEventIds, getEvent, k, PRICE_SCALE } from "../_kv.js";
 
 function normStr(v) {
   return String(v ?? "");
@@ -7,22 +8,40 @@ function normStr(v) {
 
 function normalizeUser(u) {
   const user = u && typeof u === "object" ? { ...u } : {};
-  user.name = String(user.name || "").trim().slice(0, 20);
-  user.points = Number(user.points || 0);
+  user.name = String(user.displayName || user.name || "").trim().slice(0, 20);
   return user;
 }
 
-function optionText(ev, optionId) {
-  const opt = (ev?.options || []).find((o) => Number(o.id) === Number(optionId));
-  return opt?.text ?? "-";
+function optionText(outcome) {
+  const oc = String(outcome || "").toUpperCase();
+  if (oc === "YES") return "YES";
+  if (oc === "NO") return "NO";
+  return "-";
 }
 
-function outcomeLabel(ev, optionId) {
+function outcomeLabel(ev, outcome) {
   if (!ev || ev.status !== "resolved") return "未確定";
-  const win = Number(ev.resultOptionId);
-  const bet = Number(optionId);
-  if (!Number.isFinite(win) || !Number.isFinite(bet)) return "未確定";
+  const win = String(ev.result || "").toUpperCase();
+  const bet = String(outcome || "").toUpperCase();
+  if (!win || !bet) return "未確定";
   return win === bet ? "的中" : "ハズレ";
+}
+
+function tradeSideForUser(trade, userId) {
+  const taker = trade?.taker;
+  if (taker && normStr(taker.userId) === normStr(userId)) {
+    return { role: "taker", outcome: taker.outcome, priceBps: taker.priceBps };
+  }
+  const maker = trade?.maker;
+  if (maker && normStr(maker.userId) === normStr(userId)) {
+    return { role: "maker", outcome: maker.outcome, priceBps: maker.priceBps };
+  }
+  return null;
+}
+
+function costPoints(priceBps, qty) {
+  const units = Number(priceBps || 0) * Number(qty || 0);
+  return units / PRICE_SCALE;
 }
 
 export default async function handler(req, res) {
@@ -32,21 +51,31 @@ export default async function handler(req, res) {
     const { deviceId } = req.query;
     if (!deviceId) return res.status(400).send("deviceId required");
 
-    const store = await loadStore();
-    const rawUser = store.users?.[deviceId];
+    const rawUser = await getUser(deviceId);
     if (!rawUser) return res.status(404).send("not found");
 
     const user = normalizeUser(rawUser);
 
     // ===== 履歴モード =====
     if (req.query.action === "history") {
-      const events = Array.isArray(store.events) ? store.events : [];
       const history = [];
 
-      for (const ev of events) {
-        const trades = Array.isArray(ev.trades) ? ev.trades : [];
-        for (const t of trades) {
-          if (normStr(t.deviceId) !== normStr(deviceId)) continue;
+      const eventIds = await listEventIds();
+
+      for (const eventId of eventIds) {
+        const ev = await getEvent(eventId);
+        if (!ev) continue;
+
+        const tradeIds = await kv.lrange(k.tradesByEvent(eventId), 0, -1).catch(() => []);
+        for (const tradeId of Array.isArray(tradeIds) ? tradeIds : []) {
+          const t = await kv.get(k.trade(eventId, tradeId));
+          if (!t || typeof t !== "object") continue;
+
+          const side = tradeSideForUser(t, deviceId);
+          if (!side) continue;
+
+          const qty = Number(t.qty || 0);
+          const priceBps = Number(side.priceBps || 0);
 
           history.push({
             // event
@@ -55,17 +84,17 @@ export default async function handler(req, res) {
             category: ev.category ?? "-",
             endDate: ev.endDate ?? null,
             eventStatus: ev.status ?? "open",
-            resultOptionId: ev.resultOptionId ?? null,
+            resultOptionId: ev.result ?? null,
 
             // trade
             createdAt: t.createdAt ?? null,
-            optionId: Number(t.optionId),
-            optionText: optionText(ev, t.optionId),
-            shares: Number(t.shares || 0),
-            cost: Number(t.cost || 0),
+            optionId: side.outcome,
+            optionText: optionText(side.outcome),
+            shares: qty,
+            cost: costPoints(priceBps, qty),
 
             // status
-            outcome: outcomeLabel(ev, t.optionId),
+            outcome: outcomeLabel(ev, side.outcome),
           });
         }
       }

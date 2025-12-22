@@ -17,6 +17,7 @@ let activeEvent = null;
 
 let selectedOutcome = null; // "YES" | "NO"
 let sheetPricePct = 50; // 1..99
+let sheetBasePricePct = 50;
 let sheetBetPoints = 0;
 
 // units: 10000 units = 1pt
@@ -325,11 +326,27 @@ function setSheetPricePct(pct) {
   computeDerived();
 }
 
+function computeImpactPct(points) {
+  const liquidity = Number(currentEvent()?.market?.liquidityPoints ?? 500);
+  const tickPct = Math.max(1, Math.round(getTickBps() / 100));
+  const safeLiquidity = Number.isFinite(liquidity) && liquidity > 0 ? liquidity : 500;
+  const rawImpact = (Number(points || 0) / safeLiquidity) * 10;
+  const stepped = Math.round(rawImpact / tickPct) * tickPct;
+  return Math.min(20, Math.max(0, stepped));
+}
+
+function computePricePctForPoints(points) {
+  const base = clampPct(sheetBasePricePct);
+  const impact = computeImpactPct(points);
+  if (selectedOutcome === "NO") return clampPct(base - impact);
+  return clampPct(base + impact);
+}
+
 function setBetPoints(v) {
   sheetBetPoints = clampPoints(v);
   if (betInputEl()) betInputEl().value = String(sheetBetPoints);
   if (betBigEl()) betBigEl().textContent = String(sheetBetPoints);
-  computeDerived();
+  setSheetPricePct(computePricePctForPoints(sheetBetPoints));
 }
 
 function computeDerived() {
@@ -358,7 +375,8 @@ function openSheet(outcome, pricePct, targetEvent = currentEvent()) {
   if (sheetOptionTextEl()) sheetOptionTextEl().textContent = target?.title ?? ev?.title ?? "-";
   if (sheetSideLabelEl()) sheetSideLabelEl().textContent = outcome === "YES" ? "Yes" : "No";
 
-  setSheetPricePct(pricePct);
+  sheetBasePricePct = clampPct(pricePct);
+  setSheetPricePct(sheetBasePricePct);
   setBetPoints(0);
 
   showSheet(true);
