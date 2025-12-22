@@ -32,6 +32,8 @@ export const k = {
   trade: (eventId, tradeId) => `${PMV2}:trade:${eventId}:${tradeId}`,
   tradesByEvent: (eventId) => `${PMV2}:idx:trades:${eventId}`, // List or Set of tradeIds
   position: (eventId, userId) => `${PMV2}:pos:${eventId}:${userId}`, // { yesQty, noQty, ... }
+  rulesUpdates: (eventId) => `${PMV2}:rules:${eventId}`, // List of updates
+  auditLogs: (eventId) => `${PMV2}:audit:${eventId}`, // List of audit logs
 
   // locks
   lock: (name) => `${PMV2}:lock:${name}`,
@@ -137,7 +139,7 @@ export async function ensureUser(userId, displayName = "Guest") {
       // balanceが壊れてたら補正
       const b = await kv.get(balKey);
       if (!b || typeof b !== "object") {
-        await kv.set(balKey, { available: 1000, locked: 0, updatedAt: nowISO() });
+        await kv.set(balKey, { available: 1000 * PRICE_SCALE, locked: 0, updatedAt: nowISO() });
       }
     }
     return u;
@@ -307,4 +309,30 @@ export function clampPriceBps(v) {
 
 export function bpsToProb(bps) {
   return clampPriceBps(bps) / PRICE_SCALE;
+}
+
+export async function appendRulesUpdate(eventId, update) {
+  if (!eventId) throw new Error("missing eventId");
+  if (!update || typeof update !== "object") throw new Error("invalid_rules_update");
+  await kv.rpush(k.rulesUpdates(eventId), update);
+  return update;
+}
+
+export async function listRulesUpdates(eventId) {
+  if (!eventId) return [];
+  const items = await kv.lrange(k.rulesUpdates(eventId), 0, -1).catch(() => []);
+  return Array.isArray(items) ? items : [];
+}
+
+export async function appendAuditLog(eventId, log) {
+  if (!eventId) throw new Error("missing eventId");
+  if (!log || typeof log !== "object") throw new Error("invalid_audit_log");
+  await kv.rpush(k.auditLogs(eventId), log);
+  return log;
+}
+
+export async function listAuditLogs(eventId) {
+  if (!eventId) return [];
+  const items = await kv.lrange(k.auditLogs(eventId), 0, -1).catch(() => []);
+  return Array.isArray(items) ? items : [];
 }

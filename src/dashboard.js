@@ -2,6 +2,8 @@
 import { initAuthAndRender } from "./auth.js";
 import { initUserMenu } from "./userMenu.js";
 
+const LS_ADMIN_KEY = "predictrade.adminKey.v1";
+
 function setText(id, text) {
   const el = document.getElementById(id);
   if (el) el.textContent = text;
@@ -29,6 +31,51 @@ async function fetchHistory(deviceId) {
 
 function uniq(arr) {
   return Array.from(new Set(arr));
+}
+
+function getAdminKey() {
+  return localStorage.getItem(LS_ADMIN_KEY) || "";
+}
+
+async function fetchAdminSnapshot(key) {
+  const res = await fetch(`/api/admin/snapshot?key=${encodeURIComponent(key)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function renderAdminSnapshot(snapshot) {
+  const usersEl = document.getElementById("adminUsers");
+  const marketsEl = document.getElementById("adminMarkets");
+  if (!usersEl || !marketsEl) return;
+
+  const users = Array.isArray(snapshot?.users) ? snapshot.users : [];
+  const perEvent = Array.isArray(snapshot?.perEvent) ? snapshot.perEvent : [];
+
+  usersEl.innerHTML = users.length
+    ? users
+        .map(
+          (u) => `
+            <div class="flex items-center justify-between text-xs bg-slate-900/40 border border-slate-800 rounded-lg px-2 py-1">
+              <span>${u.displayName || u.userId}</span>
+              <span class="text-slate-400">${((u.balance?.available || 0) / 10000).toFixed(2)} pt / lock ${((u.balance?.locked || 0) / 10000).toFixed(2)}</span>
+            </div>`
+        )
+        .join("")
+    : "<div class='text-xs text-slate-500'>ユーザーなし</div>";
+
+  marketsEl.innerHTML = perEvent.length
+    ? perEvent
+        .map(
+          (m) => `
+            <div class="border border-slate-800 rounded-lg p-3 bg-slate-900/40 space-y-1 text-xs">
+              <div class="font-semibold text-slate-200">${m.eventId}</div>
+              <div class="text-slate-400">collateral ${((m.collateralUnits || 0) / 10000).toFixed(2)} pt</div>
+              <div class="text-slate-400">orders ${m.ordersCount} / trades ${m.tradesCount}</div>
+              <div class="text-slate-500">positions ${Array.isArray(m.positions) ? m.positions.length : 0}</div>
+            </div>`
+        )
+        .join("")
+    : "<div class='text-xs text-slate-500'>マーケットなし</div>";
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -59,4 +106,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     setText("participatedEvents", "-");
     setText("predCount", "-");
   }
+
+  const keyInput = document.getElementById("adminKeyInput");
+  const keyStored = getAdminKey();
+  if (keyInput && keyStored) keyInput.value = keyStored;
+
+  document.getElementById("adminSnapshotBtn")?.addEventListener("click", async () => {
+    const msg = document.getElementById("adminSnapshotMsg");
+    if (msg) msg.textContent = "";
+    try {
+      const key = keyInput?.value?.trim();
+      if (!key) throw new Error("ADMIN_KEY required");
+      localStorage.setItem(LS_ADMIN_KEY, key);
+      const snapshot = await fetchAdminSnapshot(key);
+      renderAdminSnapshot(snapshot);
+    } catch (e) {
+      if (msg) msg.textContent = String(e?.message || e);
+    }
+  });
 });

@@ -10,6 +10,7 @@ import {
   sanitizeText,
   clampPriceBps,
   PRICE_SCALE,
+  appendAuditLog,
 } from "../../_kv.js";
 import { kv } from "@vercel/kv";
 
@@ -44,7 +45,7 @@ function assertOutcome(v) {
 
 function assertSide(v) {
   const x = String(v || "").toLowerCase();
-  if (x !== "buy") throw new Error("only_buy_supported_in_phase1");
+  if (x !== "buy" && x !== "sell") throw new Error("side must be buy or sell");
   return x;
 }
 
@@ -95,8 +96,8 @@ async function spendLockedUnits(userId, unitsSpent, refundUnits = 0) {
   const r = Number(refundUnits || 0);
   return await withLock(`bal:${userId}`, async () => {
     const cur = await getBalUnits(userId);
-    if (cur.locked < s) throw new Error("insufficient_locked");
-    return await setBalUnits(userId, cur.available + r, cur.locked - s);
+    if (cur.locked < s + r) throw new Error("insufficient_locked");
+    return await setBalUnits(userId, cur.available + r, cur.locked - s - r);
   });
 }
 
@@ -116,6 +117,28 @@ async function addPos(eventId, userId, outcome, qty) {
         : { yesQty: cur.yesQty, noQty: cur.noQty + qty };
     await kv.set(k.position(eventId, userId), next);
     return next;
+  });
+}
+
+async function removePos(eventId, userId, outcome, qty) {
+  return await withLock(`pos:${eventId}:${userId}`, async () => {
+    const cur = await getPos(eventId, userId);
+    const next =
+      outcome === "YES"
+        ? { yesQty: cur.yesQty - qty, noQty: cur.noQty }
+        : { yesQty: cur.yesQty, noQty: cur.noQty - qty };
+    if (next.yesQty < 0 || next.noQty < 0) throw new Error("insufficient_shares");
+    await kv.set(k.position(eventId, userId), next);
+    return next;
+  });
+}
+
+async function addAvailableUnits(userId, units) {
+  const u = Number(units || 0);
+  if (!Number.isFinite(u) || u < 0) throw new Error("invalid_units");
+  return await withLock(`bal:${userId}`, async () => {
+    const cur = await getBalUnits(userId);
+    return await setBalUnits(userId, cur.available + u, cur.locked);
   });
 }
 
@@ -165,7 +188,7 @@ export default async function handler(req, res) {
     if (!deviceId) return res.status(400).send("deviceId required");
 
     const oc = assertOutcome(outcome);
-    assertSide(side);
+    const orderSide = assertSide(side);
     const pBps = clampPriceBps(priceBps);
     const q = assertQty(qty);
 
@@ -174,17 +197,26 @@ export default async function handler(req, res) {
       // event check
       const ev = await getEvent(eventId);
       if (!ev) throw new Error("event not found");
-      if (ev.status === "resolved") throw new Error("event already resolved");
+      if (ev.status === "resolved" || ev.status === "canceled") throw new Error("event already resolved");
 
       const end = new Date(ev.endDate).getTime();
-      if (Number.isFinite(end) && Date.now() >= end) throw new Error("event closed");
+      if (Number.isFinite(end) && Date.now() >= end) {
+        if (ev.status === "active") {
+          await putEvent({ ...ev, status: "tradingClosed", updatedAt: nowISO() });
+        }
+        throw new Error("event closed");
+      }
 
       // ensure user & balance
       await ensureUser(deviceId, sanitizeText(name || "Guest", 32));
 
-      // place order: lock max cost for this order
-      const locked = costUnits(pBps, q);
-      await lockUnits(deviceId, locked);
+      let locked = 0;
+      if (orderSide === "buy") {
+        locked = costUnits(pBps, q);
+        await lockUnits(deviceId, locked);
+      } else {
+        await removePos(eventId, deviceId, oc, q);
+      }
 
       const orderId = genId("ord");
       const order = {
@@ -192,109 +224,182 @@ export default async function handler(req, res) {
         eventId,
         userId: deviceId,
         outcome: oc,
-        side: "buy",
+        side: orderSide,
         priceBps: pBps,
         qty: q,
         remaining: q,
         lockedUnits: locked,
+        lockedShares: orderSide === "sell" ? q : 0,
         status: "open",
         createdAt: nowISO(),
       };
       await putOrder(eventId, order);
 
-      // Try match against opposite BUY orders to MINT
-      // Condition:
-      // - if incoming is YES at p, find NO orders with priceBps >= (10000 - p)
-      // - if incoming is NO at p, find YES orders with priceBps >= (10000 - p)
-      const needOppMin = PRICE_SCALE - pBps;
       const opp = oppOutcome(oc);
-
-      // naive matching: load open orders and pick best candidates
       const opens = await listOpenOrders(eventId);
-      const candidates = opens
-        .filter((o) => o.id !== orderId)
-        .filter((o) => o.side === "buy" && o.outcome === opp && o.status === "open")
-        .filter((o) => Number(o.priceBps) >= needOppMin)
-        // best = higher price first (more likely to match)
-        .sort((a, b) => Number(b.priceBps) - Number(a.priceBps));
 
       let remaining = q;
       let totalFilled = 0;
 
-      for (const maker of candidates) {
-        if (remaining <= 0) break;
+      if (orderSide === "buy") {
+        // 1) match against SELL orders (secondary trades)
+        const sellCandidates = opens
+          .filter((o) => o.id !== orderId)
+          .filter((o) => o.side === "sell" && o.outcome === oc && o.status === "open")
+          .filter((o) => Number(o.priceBps) <= pBps)
+          .sort((a, b) => Number(a.priceBps) - Number(b.priceBps));
 
-        const makerRem = Number(maker.remaining || 0);
-        if (makerRem <= 0) continue;
+        for (const maker of sellCandidates) {
+          if (remaining <= 0) break;
+          const makerRem = Number(maker.remaining || 0);
+          if (makerRem <= 0) continue;
 
-        const fillQty = Math.min(remaining, makerRem);
+          const fillQty = Math.min(remaining, makerRem);
+          const execPrice = Number(maker.priceBps);
+          const buyerSpend = costUnits(execPrice, fillQty);
+          const buyerRefund = costUnits(pBps - execPrice, fillQty);
 
-        // Execution: use taker price as anchor.
-        // If taker is YES at p, maker(NO) executes at (1-p).
-        // If taker is NO at p, maker(YES) executes at (1-p).
-        const takerPrice = pBps;
-        const makerExecPrice = PRICE_SCALE - takerPrice;
+          remaining -= fillQty;
+          totalFilled += fillQty;
 
-        // check maker limit (should pass by construction)
-        if (makerExecPrice > Number(maker.priceBps)) continue;
+          const newMakerRem = makerRem - fillQty;
+          await closeOrder(eventId, maker.id, {
+            remaining: newMakerRem,
+            lockedShares: newMakerRem <= 0 ? 0 : newMakerRem,
+            status: newMakerRem <= 0 ? "filled" : "open",
+          });
 
-        // Spend locked:
-        // taker spends takerPrice * fillQty
-        // maker spends makerExecPrice * fillQty
-        // Any extra locked due to limit price improvement is refunded when order closes or reduces.
-        const takerSpend = costUnits(takerPrice, fillQty);
-        const makerSpend = costUnits(makerExecPrice, fillQty);
+          await closeOrder(eventId, orderId, {
+            remaining,
+            lockedUnits: remaining <= 0 ? 0 : costUnits(pBps, remaining),
+            status: remaining <= 0 ? "filled" : "open",
+          });
 
-        // Update order remaining
-        remaining -= fillQty;
-        totalFilled += fillQty;
+          await addPos(eventId, deviceId, oc, fillQty);
+          await spendLockedUnits(deviceId, buyerSpend, buyerRefund);
+          await addAvailableUnits(maker.userId, buyerSpend);
 
-        const newMakerRem = makerRem - fillQty;
+          await addTrade(eventId, {
+            eventId,
+            qty: fillQty,
+            yesPriceBps: oc === "YES" ? execPrice : PRICE_SCALE - execPrice,
+            noPriceBps: oc === "NO" ? execPrice : PRICE_SCALE - execPrice,
+            taker: { userId: deviceId, outcome: oc, priceBps: execPrice },
+            maker: { userId: maker.userId, outcome: oc, priceBps: execPrice, orderId: maker.id },
+            kind: "secondary",
+          });
+        }
 
-        await closeOrder(eventId, maker.id, {
-  remaining: newMakerRem,
-  lockedUnits: newMakerRem <= 0
-    ? 0
-    : costUnits(Number(maker.priceBps), newMakerRem),
-  status: newMakerRem <= 0 ? "filled" : "open",
-});
+        // 2) match against opposite BUY orders to MINT
+        if (remaining > 0) {
+          const needOppMin = PRICE_SCALE - pBps;
+          const mintCandidates = opens
+            .filter((o) => o.id !== orderId)
+            .filter((o) => o.side === "buy" && o.outcome === opp && o.status === "open")
+            .filter((o) => Number(o.priceBps) >= needOppMin)
+            .sort((a, b) => Number(b.priceBps) - Number(a.priceBps));
 
+          for (const maker of mintCandidates) {
+            if (remaining <= 0) break;
+            const makerRem = Number(maker.remaining || 0);
+            if (makerRem <= 0) continue;
 
-await closeOrder(eventId, orderId, {
-  remaining,
-  lockedUnits: remaining <= 0
-    ? 0
-    : costUnits(pBps, remaining), // takerは自分の指値 pBps
-  status: remaining <= 0 ? "filled" : "open",
-});
+            const fillQty = Math.min(remaining, makerRem);
+            const takerPrice = pBps;
+            const makerExecPrice = PRICE_SCALE - takerPrice;
 
+            if (makerExecPrice > Number(maker.priceBps)) continue;
 
+            const takerSpend = costUnits(takerPrice, fillQty);
+            const makerSpend = costUnits(makerExecPrice, fillQty);
+            const makerRefund =
+              costUnits(Number(maker.priceBps) - makerExecPrice, fillQty);
 
-        // Mint positions:
-        // taker gets outcome oc shares, maker gets opposite shares
-        await addPos(eventId, deviceId, oc, fillQty);
-        await addPos(eventId, maker.userId, opp, fillQty);
+            remaining -= fillQty;
+            totalFilled += fillQty;
 
-        // ✅ mint成立 = 1pt/枚 の担保がイベントに積まれる
-        await kv.incrby(`${PMV2_PREFIX}:coll:${eventId}`, fillQty * UNIT_SCALE);
+            const newMakerRem = makerRem - fillQty;
 
-        // consume locked and refund improvements later:
-        // For simplicity in Phase1:
-        // - immediately spend locked amount for filled part
-        // - keep remaining locked tied to remaining shares
-        await spendLockedUnits(deviceId, takerSpend, 0);
-        await spendLockedUnits(maker.userId, makerSpend, 0);
+            await closeOrder(eventId, maker.id, {
+              remaining: newMakerRem,
+              lockedUnits:
+                newMakerRem <= 0 ? 0 : costUnits(Number(maker.priceBps), newMakerRem),
+              status: newMakerRem <= 0 ? "filled" : "open",
+            });
 
-        // record trade
-        await addTrade(eventId, {
-          eventId,
-          qty: fillQty,
-          yesPriceBps: oc === "YES" ? takerPrice : makerExecPrice,
-          noPriceBps: oc === "NO" ? takerPrice : makerExecPrice,
-          taker: { userId: deviceId, outcome: oc, priceBps: takerPrice },
-          maker: { userId: maker.userId, outcome: opp, priceBps: makerExecPrice, orderId: maker.id },
-          kind: "mint",
-        });
+            await closeOrder(eventId, orderId, {
+              remaining,
+              lockedUnits: remaining <= 0 ? 0 : costUnits(pBps, remaining),
+              status: remaining <= 0 ? "filled" : "open",
+            });
+
+            await addPos(eventId, deviceId, oc, fillQty);
+            await addPos(eventId, maker.userId, opp, fillQty);
+
+            await kv.incrby(`${PMV2_PREFIX}:coll:${eventId}`, fillQty * UNIT_SCALE);
+
+            await spendLockedUnits(deviceId, takerSpend, 0);
+            await spendLockedUnits(maker.userId, makerSpend, makerRefund);
+
+            await addTrade(eventId, {
+              eventId,
+              qty: fillQty,
+              yesPriceBps: oc === "YES" ? takerPrice : makerExecPrice,
+              noPriceBps: oc === "NO" ? takerPrice : makerExecPrice,
+              taker: { userId: deviceId, outcome: oc, priceBps: takerPrice },
+              maker: { userId: maker.userId, outcome: opp, priceBps: makerExecPrice, orderId: maker.id },
+              kind: "mint",
+            });
+          }
+        }
+      } else {
+        // SELL order: match with existing BUY orders (secondary trades)
+        const buyCandidates = opens
+          .filter((o) => o.id !== orderId)
+          .filter((o) => o.side === "buy" && o.outcome === oc && o.status === "open")
+          .filter((o) => Number(o.priceBps) >= pBps)
+          .sort((a, b) => Number(b.priceBps) - Number(a.priceBps));
+
+        for (const maker of buyCandidates) {
+          if (remaining <= 0) break;
+          const makerRem = Number(maker.remaining || 0);
+          if (makerRem <= 0) continue;
+
+          const fillQty = Math.min(remaining, makerRem);
+          const execPrice = Number(maker.priceBps);
+          const buyerSpend = costUnits(execPrice, fillQty);
+
+          remaining -= fillQty;
+          totalFilled += fillQty;
+
+          const newMakerRem = makerRem - fillQty;
+          await closeOrder(eventId, maker.id, {
+            remaining: newMakerRem,
+            lockedUnits:
+              newMakerRem <= 0 ? 0 : costUnits(Number(maker.priceBps), newMakerRem),
+            status: newMakerRem <= 0 ? "filled" : "open",
+          });
+
+          await closeOrder(eventId, orderId, {
+            remaining,
+            lockedShares: remaining <= 0 ? 0 : remaining,
+            status: remaining <= 0 ? "filled" : "open",
+          });
+
+          await addPos(eventId, maker.userId, oc, fillQty);
+          await spendLockedUnits(maker.userId, buyerSpend, 0);
+          await addAvailableUnits(deviceId, buyerSpend);
+
+          await addTrade(eventId, {
+            eventId,
+            qty: fillQty,
+            yesPriceBps: oc === "YES" ? execPrice : PRICE_SCALE - execPrice,
+            noPriceBps: oc === "NO" ? execPrice : PRICE_SCALE - execPrice,
+            taker: { userId: deviceId, outcome: oc, priceBps: execPrice },
+            maker: { userId: maker.userId, outcome: oc, priceBps: execPrice, orderId: maker.id },
+            kind: "secondary",
+          });
+        }
       }
 
       // If order fully filled, refund any unused locked due to improvement:
@@ -320,6 +425,17 @@ await closeOrder(eventId, orderId, {
       const bal = await getBalUnits(deviceId);
       const pos = await getPos(eventId, deviceId);
 
+      await appendAuditLog(eventId, {
+        at: nowISO(),
+        type: "order",
+        by: deviceId,
+        side: orderSide,
+        outcome: oc,
+        priceBps: pBps,
+        qty: q,
+        filled: totalFilled,
+      });
+
       return {
         ok: true,
         event: ev2,
@@ -341,6 +457,7 @@ await closeOrder(eventId, orderId, {
       msg.includes("closed") ? 400 :
       msg.includes("already resolved") ? 400 :
       msg.includes("not enough") ? 400 :
+      msg.includes("insufficient_shares") ? 400 :
       500;
     return res.status(code).send(msg);
   }
