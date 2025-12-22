@@ -21,6 +21,24 @@ async function setBal(userId, available, locked) {
   return { available: a, locked: l };
 }
 
+async function getPos(eventId, userId) {
+  const p = await kv.get(k.position(eventId, userId));
+  const obj = p && typeof p === "object" ? p : { yesQty: 0, noQty: 0 };
+  return { yesQty: toNum(obj.yesQty), noQty: toNum(obj.noQty) };
+}
+
+async function addPos(eventId, userId, outcome, qty) {
+  return await withLock(`pos:${eventId}:${userId}`, async () => {
+    const cur = await getPos(eventId, userId);
+    const next =
+      outcome === "YES"
+        ? { yesQty: cur.yesQty + qty, noQty: cur.noQty }
+        : { yesQty: cur.yesQty, noQty: cur.noQty + qty };
+    await kv.set(k.position(eventId, userId), next);
+    return next;
+  });
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
@@ -50,18 +68,27 @@ export default async function handler(req, res) {
       const priceBps = toNum(ord.priceBps);
       if (priceBps < 0 || priceBps > PRICE_SCALE) throw new Error("invalid order price");
 
-      // ✅ 返金は「orderに残っている lockedUnits」を信頼する（remaining*priceBpsの再計算はしない）
-      const refundUnits = Math.floor(toNum(ord.lockedUnits));
-      if (refundUnits <= 0) throw new Error("nothing_to_refund");
+      let bal = null;
+      let refundUnits = 0;
+      if (ord.side === "buy") {
+        // ✅ 返金は「orderに残っている lockedUnits」を信頼する（remaining*priceBpsの再計算はしない）
+        refundUnits = Math.floor(toNum(ord.lockedUnits));
+        if (refundUnits <= 0) throw new Error("nothing_to_refund");
 
-      // balance: locked -> available へ戻す
-      const bal = await withLock(`bal:${deviceId}`, async () => {
-        const cur = await getBal(deviceId);
-        if (cur.locked < refundUnits) {
-          throw new Error(`insufficient_locked: have=${cur.locked} need=${refundUnits}`);
+        // balance: locked -> available へ戻す
+        bal = await withLock(`bal:${deviceId}`, async () => {
+          const cur = await getBal(deviceId);
+          if (cur.locked < refundUnits) {
+            throw new Error(`insufficient_locked: have=${cur.locked} need=${refundUnits}`);
+          }
+          return setBal(deviceId, cur.available + refundUnits, cur.locked - refundUnits);
+        });
+      } else if (ord.side === "sell") {
+        const remainingShares = toNum(ord.remaining);
+        if (remainingShares > 0) {
+          await addPos(eventId, deviceId, String(ord.outcome || "").toUpperCase(), remainingShares);
         }
-        return setBal(deviceId, cur.available + refundUnits, cur.locked - refundUnits);
-      });
+      }
 
       // order をキャンセルに（remaining=0, lockedUnits=0）
       const next = {
@@ -88,7 +115,7 @@ export default async function handler(req, res) {
       };
       await putEvent(ev2);
 
-      return { ok: true, order: next, balanceUnits: bal, event: ev2, refundUnits };
+      return { ok: true, order: next, balanceUnits: bal, event: ev2, refundUnits: bal ? refundUnits : 0 };
     });
 
     return res.status(200).json(out);

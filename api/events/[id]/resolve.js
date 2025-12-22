@@ -1,6 +1,6 @@
 // api/events/[id]/resolve.js (PM v2)
 import { kv } from "@vercel/kv";
-import { isAdminRequest, withLock, getEvent, putEvent, listUserIds, k, nowISO, PRICE_SCALE } from "../../_kv.js";
+import { isAdminRequest, withLock, getEvent, putEvent, listUserIds, k, nowISO, PRICE_SCALE, appendAuditLog } from "../../_kv.js";
 
 const PMV2_PREFIX = "predictrade:pm:v2";
 const UNIT_SCALE = PRICE_SCALE; // 10000
@@ -44,6 +44,18 @@ async function addAvailable(userId, units) {
   });
 }
 
+async function addPos(eventId, userId, outcome, qty) {
+  return await withLock(`pos:${eventId}:${userId}`, async () => {
+    const cur = await getPos(eventId, userId);
+    const next =
+      outcome === "YES"
+        ? { yesQty: cur.yesQty + qty, noQty: cur.noQty }
+        : { yesQty: cur.yesQty, noQty: cur.noQty + qty };
+    await kv.set(k.position(eventId, userId), next);
+    return next;
+  });
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
@@ -61,6 +73,38 @@ export default async function handler(req, res) {
 
       const collKey = `${PMV2_PREFIX}:coll:${eventId}`;
       const collBefore = toNum(await kv.get(collKey), 0);
+
+      // cancel open orders and refund locked funds/shares
+      const orderIds = await kv.smembers(k.ordersByEvent(eventId));
+      for (const oid of Array.isArray(orderIds) ? orderIds : []) {
+        const ord = await kv.get(k.order(eventId, oid));
+        if (!ord || typeof ord !== "object") continue;
+        if (ord.status !== "open") continue;
+        const remaining = toNum(ord.remaining);
+        if (remaining <= 0) continue;
+
+        if (ord.side === "buy") {
+          const refundUnits = toNum(ord.lockedUnits);
+          if (refundUnits > 0) {
+            await withLock(`bal:${ord.userId}`, async () => {
+              const cur = await getBal(ord.userId);
+              if (cur.locked < refundUnits) return cur;
+              return await setBal(ord.userId, cur.available + refundUnits, cur.locked - refundUnits);
+            });
+          }
+        } else if (ord.side === "sell") {
+          await addPos(eventId, ord.userId, String(ord.outcome || "").toUpperCase(), remaining);
+        }
+
+        await kv.set(k.order(eventId, oid), {
+          ...ord,
+          status: "cancelled",
+          remaining: 0,
+          lockedUnits: 0,
+          lockedShares: 0,
+          updatedAt: nowISO(),
+        });
+      }
 
       const userIds = await listUserIds();
       const payouts = [];
@@ -89,6 +133,14 @@ export default async function handler(req, res) {
         result: win,
         resolvedAt: nowISO(),
         payoutsSummary: { count: payouts.length, paidUnits: payTotal },
+      });
+
+      await appendAuditLog(eventId, {
+        at: nowISO(),
+        type: "resolve",
+        by: "admin",
+        result: win,
+        paidUnits: payTotal,
       });
 
       return {

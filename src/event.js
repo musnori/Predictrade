@@ -6,8 +6,9 @@ import {
   getCategoryName,
   placeOrder,
   timeRemaining,
-  getMyOpenOrders,
   cancelOrder,
+  addClarification,
+  resolveEvent,
 } from "./storage.js";
 
 let auth;
@@ -16,12 +17,14 @@ let ev;
 let activeEvent = null;
 
 let selectedOutcome = null; // "YES" | "NO"
+let orderSide = "buy"; // buy | sell
 let sheetPricePct = 50; // 1..99
 let sheetBasePricePct = 50;
 let sheetBetPoints = 0;
 
 // units: 10000 units = 1pt
 const UNIT_SCALE = 10000;
+const LS_ADMIN_KEY = "predictrade.adminKey.v1";
 
 function idFromQuery() {
   return new URLSearchParams(location.search).get("id");
@@ -49,6 +52,10 @@ function clampPoints(v) {
   const n = Math.floor(Number(v));
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(10_000_000, n));
+}
+
+function getAdminKey() {
+  return localStorage.getItem(LS_ADMIN_KEY) || "";
 }
 
 /* ================= Header/User ================= */
@@ -103,6 +110,9 @@ function updateResolvedBadge() {
   if (ev.status === "resolved") {
     badge.classList.remove("hidden");
     badge.textContent = `確定：${ev.result || "-"}`;
+  } else if (ev.status === "tradingClosed") {
+    badge.classList.remove("hidden");
+    badge.textContent = "取引終了";
   } else {
     badge.classList.add("hidden");
   }
@@ -174,14 +184,14 @@ function renderRangeOutcomes() {
 
     row.querySelector(".buyYes")?.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (child.status === "resolved") return;
+      if (child.status === "resolved" || child.status === "tradingClosed") return;
       setActiveEvent(child);
       openSheet("YES", yesPct, child);
     });
 
     row.querySelector(".buyNo")?.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (child.status === "resolved") return;
+      if (child.status === "resolved" || child.status === "tradingClosed") return;
       setActiveEvent(child);
       openSheet("NO", noPct, child);
     });
@@ -257,12 +267,12 @@ function renderLadder() {
     `;
 
     row.querySelector(".buyYes")?.addEventListener("click", () => {
-      if (target.status === "resolved") return;
+      if (target.status === "resolved" || target.status === "tradingClosed") return;
       openSheet("YES", yesPct, target);
     });
 
     row.querySelector(".buyNo")?.addEventListener("click", () => {
-      if (target.status === "resolved") return;
+      if (target.status === "resolved" || target.status === "tradingClosed") return;
       // NOの価格は (100 - YES価格)
       openSheet("NO", noPct, target);
     });
@@ -270,12 +280,134 @@ function renderLadder() {
     rowsEl.appendChild(row);
   });
 
-  updateMarketSnapshot(center);
+  updateMarketSnapshot();
 }
 
-function updateMarketSnapshot(yesPct) {
-  const yes = clampPct(yesPct ?? getCenterYesPct());
-  const no = 100 - yes;
+function fmtPctFromBps(bps) {
+  if (!Number.isFinite(bps)) return "-";
+  return `${Math.round(bps / 100)}%`;
+}
+
+function renderOrderbook() {
+  const target = currentEvent();
+  const yesBidsEl = document.getElementById("yesBids");
+  const yesAsksEl = document.getElementById("yesAsks");
+  const noBidsEl = document.getElementById("noBids");
+  const noAsksEl = document.getElementById("noAsks");
+  const statusEl = document.getElementById("orderbookStatus");
+
+  if (!yesBidsEl || !yesAsksEl || !noBidsEl || !noAsksEl) return;
+
+  const orderbook = target?.orderbook;
+  if (!orderbook) {
+    yesBidsEl.innerHTML = "<div class='text-xs text-slate-500'>-</div>";
+    yesAsksEl.innerHTML = "<div class='text-xs text-slate-500'>-</div>";
+    noBidsEl.innerHTML = "<div class='text-xs text-slate-500'>-</div>";
+    noAsksEl.innerHTML = "<div class='text-xs text-slate-500'>-</div>";
+    if (statusEl) statusEl.textContent = "-";
+    return;
+  }
+
+  const renderLevels = (levels) =>
+    levels
+      .slice(0, 6)
+      .map(
+        (lvl) => `
+        <div class="flex items-center justify-between text-xs bg-slate-900/40 border border-slate-800 rounded-lg px-2 py-1">
+          <span>${fmtPctFromBps(lvl.priceBps)}</span>
+          <span class="text-slate-400">${Number(lvl.qty || 0)}</span>
+        </div>`
+      )
+      .join("");
+
+  yesBidsEl.innerHTML = renderLevels(orderbook.yes?.bids || []);
+  yesAsksEl.innerHTML = renderLevels(orderbook.yes?.asks || []);
+  noBidsEl.innerHTML = renderLevels(orderbook.no?.bids || []);
+  noAsksEl.innerHTML = renderLevels(orderbook.no?.asks || []);
+
+  if (statusEl) statusEl.textContent = `open orders: ${orderbook.openOrders || 0}`;
+}
+
+function renderRules() {
+  const rulesEl = document.getElementById("rulesText");
+  const updatesEl = document.getElementById("rulesUpdates");
+  const sourceEl = document.getElementById("resolutionSourceText");
+  if (rulesEl) rulesEl.textContent = ev?.rules || ev?.description || "-";
+  if (sourceEl) sourceEl.textContent = ev?.resolutionSource || "-";
+  if (!updatesEl) return;
+  const updates = Array.isArray(ev?.rulesUpdates) ? ev.rulesUpdates : [];
+  if (updates.length === 0) {
+    updatesEl.innerHTML = `<div class="text-xs text-slate-500">追加コンテキストはありません</div>`;
+    return;
+  }
+  updatesEl.innerHTML = "";
+  updates
+    .slice()
+    .sort((a, b) => String(a.at).localeCompare(String(b.at)))
+    .forEach((u) => {
+      const row = document.createElement("div");
+      row.className = "rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2";
+      row.innerHTML = `
+        <div class="text-xs text-slate-500">${new Date(u.at).toLocaleString("ja-JP")} • ${u.by || "admin"}</div>
+        <div class="mt-1">${u.text}</div>
+      `;
+      updatesEl.appendChild(row);
+    });
+}
+
+async function renderTrades() {
+  const listEl = document.getElementById("tradeRows");
+  if (!listEl) return;
+  const trades = Array.isArray(ev?.trades) ? ev.trades : [];
+  if (!trades.length) {
+    listEl.innerHTML = `<div class="text-xs text-slate-500">まだ約定がありません</div>`;
+    return;
+  }
+  listEl.innerHTML = "";
+  trades.forEach((t) => {
+    const yesPct = Math.round(Number(t.yesPriceBps || 0) / 100);
+    const row = document.createElement("div");
+    row.className = "flex items-center justify-between text-xs bg-slate-900/40 border border-slate-800 rounded-lg px-3 py-2";
+    row.innerHTML = `
+      <div>${new Date(t.createdAt).toLocaleTimeString("ja-JP")} • ${t.kind || "-"}</div>
+      <div class="text-slate-300">${yesPct}% • ${t.qty} shares</div>
+    `;
+    listEl.appendChild(row);
+  });
+}
+
+async function renderPositions() {
+  const posYes = document.getElementById("posYes");
+  const posNo = document.getElementById("posNo");
+  const posValue = document.getElementById("positionsValue");
+  const target = currentEvent();
+  if (!target || !posYes || !posNo || !posValue) return;
+
+  const position = target?.position ?? ev?.position;
+  if (!position) {
+    posYes.textContent = "-";
+    posNo.textContent = "-";
+    posValue.textContent = "-";
+    return;
+  }
+
+  const yesQty = Number(position?.yesQty || 0);
+  const noQty = Number(position?.noQty || 0);
+  const yesPrice = Number(target?.prices?.yes ?? 0);
+  const noPrice = Number(target?.prices?.no ?? 0);
+  const val = yesQty * yesPrice + noQty * noPrice;
+
+  posYes.textContent = yesQty.toLocaleString();
+  posNo.textContent = noQty.toLocaleString();
+  posValue.textContent = `${val.toFixed(2)} pt`;
+}
+
+function updateMarketSnapshot() {
+  const target = currentEvent();
+  const yesPct = clampPct(
+    Math.round(Number(target?.prices?.yes ?? 0.5) * 100) || getCenterYesPct()
+  );
+  const noPct = 100 - yesPct;
 
   const yesEl = document.getElementById("marketPriceYes");
   const noEl = document.getElementById("marketPriceNo");
@@ -284,12 +416,30 @@ function updateMarketSnapshot(yesPct) {
   const quickYesPrice = document.getElementById("quickYesPrice");
   const quickNoPrice = document.getElementById("quickNoPrice");
 
-  if (yesEl) yesEl.textContent = `${yes}%`;
-  if (noEl) noEl.textContent = `${no}%`;
-  if (splitEl) splitEl.textContent = `${yes}% / ${no}%`;
-  if (barEl) barEl.style.width = `${yes}%`;
-  if (quickYesPrice) quickYesPrice.textContent = `${yes}%`;
-  if (quickNoPrice) quickNoPrice.textContent = `${no}%`;
+  if (yesEl) yesEl.textContent = `${yesPct}%`;
+  if (noEl) noEl.textContent = `${noPct}%`;
+  if (splitEl) splitEl.textContent = `${yesPct}% / ${noPct}%`;
+  if (barEl) barEl.style.width = `${yesPct}%`;
+  if (quickYesPrice) quickYesPrice.textContent = `${yesPct}%`;
+  if (quickNoPrice) quickNoPrice.textContent = `${noPct}%`;
+
+  const bestBidYes = document.getElementById("bestBidYes");
+  const bestAskYes = document.getElementById("bestAskYes");
+  const spreadEl = document.getElementById("marketSpread");
+  const sourceEl = document.getElementById("displaySource");
+
+  const bidBps = Number(target?.bestBidsBps?.yes);
+  const askBps = Number(target?.bestAsksBps?.yes);
+  const spreadBps = Number(target?.prices?.spreadYesBps);
+  const source = target?.prices?.source || "-";
+
+  if (bestBidYes) bestBidYes.textContent = Number.isFinite(bidBps) ? `${Math.round(bidBps / 100)}%` : "-";
+  if (bestAskYes) bestAskYes.textContent = Number.isFinite(askBps) ? `${Math.round(askBps / 100)}%` : "-";
+  if (spreadEl) {
+    spreadEl.textContent =
+      Number.isFinite(spreadBps) ? `${(spreadBps / 100).toFixed(2)}%` : "-";
+  }
+  if (sourceEl) sourceEl.textContent = source;
 }
 
 /* ================= Bottom Sheet ================= */
@@ -301,6 +451,7 @@ const sheetMsgEl = () => document.getElementById("sheetMsg");
 const sheetOptionTextEl = () => document.getElementById("sheetOptionText");
 const sheetSideLabelEl = () => document.getElementById("sheetSideLabel");
 const sheetProbEl = () => document.getElementById("sheetProb");
+const betUnitEl = () => document.getElementById("betUnit");
 
 const betBigEl = () => document.getElementById("betBig");
 const betInputEl = () => document.getElementById("betPoints");
@@ -323,6 +474,23 @@ function setSheetMsg(text) {
 function setSheetPricePct(pct) {
   sheetPricePct = clampPct(pct);
   if (sheetProbEl()) sheetProbEl().textContent = `${sheetPricePct}%`;
+  computeDerived();
+}
+
+function setOrderSide(next) {
+  orderSide = next;
+  const buyBtn = document.getElementById("orderBuyBtn");
+  const sellBtn = document.getElementById("orderSellBtn");
+  if (buyBtn && sellBtn) {
+    const buyActive = orderSide === "buy";
+    buyBtn.className = buyActive
+      ? "flex-1 px-3 py-2 rounded-lg bg-emerald-600/20 border border-emerald-600/40 text-emerald-200 text-sm"
+      : "flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm";
+    sellBtn.className = !buyActive
+      ? "flex-1 px-3 py-2 rounded-lg bg-sky-500/20 border border-sky-500/40 text-sky-100 text-sm"
+      : "flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm";
+  }
+  if (betUnitEl()) betUnitEl().textContent = orderSide === "sell" ? "shares" : "pt";
   computeDerived();
 }
 
@@ -352,16 +520,20 @@ function setBetPoints(v) {
 function computeDerived() {
   // priceBps = 1..99% -> 100..9900
   const priceBps = sheetPricePct * 100;
-  const points = sheetBetPoints;
+  const amount = sheetBetPoints;
 
-  // points(=pt予算) → qty(shares)
-  // costUnits = priceBps * qty
-  // pointsUnits = points * UNIT_SCALE
-  const qty = Math.floor((points * UNIT_SCALE) / priceBps);
-
-  if (payoutEl()) {
-    payoutEl().textContent =
-      qty > 0 ? `当たれば ${qty.toLocaleString()} pt（想定）` : "—";
+  if (orderSide === "buy") {
+    const qty = Math.floor((amount * UNIT_SCALE) / priceBps);
+    if (payoutEl()) {
+      payoutEl().textContent =
+        qty > 0 ? `当たれば ${qty.toLocaleString()} pt（想定）` : "—";
+    }
+  } else {
+    const proceeds = (amount * priceBps) / UNIT_SCALE;
+    if (payoutEl()) {
+      payoutEl().textContent =
+        amount > 0 ? `受取見込み ${proceeds.toFixed(2)} pt` : "—";
+    }
   }
 }
 
@@ -378,6 +550,7 @@ function openSheet(outcome, pricePct, targetEvent = currentEvent()) {
   sheetBasePricePct = clampPct(pricePct);
   setSheetPricePct(sheetBasePricePct);
   setBetPoints(0);
+  setOrderSide("buy");
 
   showSheet(true);
 }
@@ -396,14 +569,7 @@ async function renderMyOrders() {
   }
 
   let orders = [];
-  try {
-    const data = await getMyOpenOrders(target.id, auth.deviceId);
-    orders = data?.orders || [];
-  } catch (error) {
-    wrap.innerHTML = `<div class="text-sm font-semibold">My orders</div>
-      <div class="mt-3 text-slate-400 text-sm">注文情報の取得に失敗しました</div>`;
-    return;
-  }
+  orders = Array.isArray(ev?.myOpenOrders) ? ev.myOpenOrders : [];
 
   wrap.innerHTML = `<div class="text-sm font-semibold">My orders</div>`;
   const list = document.createElement("div");
@@ -421,11 +587,16 @@ async function renderMyOrders() {
 
     const pct = Math.round(Number(o.priceBps || 0) / 100);
     const lockedPt = (Number(o.remaining || 0) * Number(o.priceBps || 0)) / UNIT_SCALE;
+    const sideLabel = o.side === "sell" ? "SELL" : "BUY";
+    const lockText =
+      o.side === "sell"
+        ? `ロック: ${Number(o.remaining || 0)} shares`
+        : `ロック: ${lockedPt.toFixed(2)} pt`;
 
     row.innerHTML = `
       <div>
-        <div class="font-semibold">${o.outcome} @ ${pct}%</div>
-        <div class="text-xs text-slate-400">残り: ${Number(o.remaining || 0)} / ロック: ${lockedPt.toFixed(2)} pt</div>
+        <div class="font-semibold">${sideLabel} ${o.outcome} @ ${pct}%</div>
+        <div class="text-xs text-slate-400">残り: ${Number(o.remaining || 0)} / ${lockText}</div>
       </div>
       <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">キャンセル</button>
     `;
@@ -448,9 +619,75 @@ async function renderMyOrders() {
   wrap.appendChild(list);
 }
 
+function renderAdminPanel() {
+  const panel = document.getElementById("adminPanel");
+  if (!panel) return;
+  const key = getAdminKey();
+  if (!key) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+
+  const select = document.getElementById("adminResolveSelect");
+  if (select && select.children.length === 0) {
+    select.innerHTML = `
+      <option value="YES">YES</option>
+      <option value="NO">NO</option>
+    `;
+  }
+
+  const participants = document.getElementById("adminParticipants");
+  if (participants) {
+    participants.innerHTML = `
+      <div class="text-xs text-slate-400">Trades: ${ev?.stats?.trades ?? 0}</div>
+      <div class="text-xs text-slate-400">Open orders: ${ev?.stats?.openOrders ?? 0}</div>
+    `;
+  }
+}
+
+async function handleAdminResolve() {
+  const msg = document.getElementById("adminResolveMsg");
+  if (msg) msg.textContent = "";
+  const key = getAdminKey();
+  if (!key) return;
+  const select = document.getElementById("adminResolveSelect");
+  const result = select?.value;
+  if (!result) return;
+
+  try {
+    await resolveEvent({ eventId: currentEvent().id, result }, key);
+    await refresh();
+    if (msg) msg.textContent = "確定しました";
+  } catch (e) {
+    if (msg) msg.textContent = String(e?.message || e);
+  }
+}
+
+async function handleAdminClarify() {
+  const msg = document.getElementById("adminClarifyMsg");
+  if (msg) msg.textContent = "";
+  const key = getAdminKey();
+  if (!key) return;
+  const text = document.getElementById("adminClarifyText")?.value?.trim();
+  const by = document.getElementById("adminClarifyBy")?.value?.trim();
+  if (!text) {
+    if (msg) msg.textContent = "追記内容を入力してください";
+    return;
+  }
+  try {
+    await addClarification({ eventId: currentEvent().id, text, by }, key);
+    document.getElementById("adminClarifyText").value = "";
+    await refresh();
+    if (msg) msg.textContent = "追加しました";
+  } catch (e) {
+    if (msg) msg.textContent = String(e?.message || e);
+  }
+}
+
 async function refresh() {
   if (!ev) return;
-  ev = await getEventById(ev.id);
+  ev = await getEventById(ev.id, auth.deviceId);
   if (isRangeParent()) {
     const children = Array.isArray(ev.children) ? ev.children : [];
     activeEvent =
@@ -462,6 +699,11 @@ async function refresh() {
   renderRangeOutcomes();
   renderLadder();
   updateResolvedBadge();
+  renderOrderbook();
+  renderRules();
+  await renderTrades();
+  await renderPositions();
+  renderAdminPanel();
 }
 
 /* ================= Boot ================= */
@@ -484,7 +726,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const id = idFromQuery();
   if (!id) return;
 
-  ev = await getEventById(id);
+  ev = await getEventById(id, auth.deviceId);
   if (isRangeParent()) {
     const children = Array.isArray(ev.children) ? ev.children : [];
     activeEvent = children[0] || null;
@@ -495,18 +737,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderRangeOutcomes();
   renderLadder();
   updateResolvedBadge();
+  renderOrderbook();
+  renderRules();
 
   await renderMyOrders();
+  await renderTrades();
+  await renderPositions();
+  renderAdminPanel();
 
   document.getElementById("quickYesBtn")?.addEventListener("click", () => {
     const target = currentEvent();
-    if (!target || target.status === "resolved") return;
+    if (!target || target.status === "resolved" || target.status === "tradingClosed") return;
     openSheet("YES", getCenterYesPct(), target);
   });
 
   document.getElementById("quickNoBtn")?.addEventListener("click", () => {
     const target = currentEvent();
-    if (!target || target.status === "resolved") return;
+    if (!target || target.status === "resolved" || target.status === "tradingClosed") return;
     openSheet("NO", 100 - getCenterYesPct(), target);
   });
 
@@ -516,6 +763,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // bet input wiring
   betInputEl()?.addEventListener("input", () => setBetPoints(betInputEl().value));
+
+  document.getElementById("orderBuyBtn")?.addEventListener("click", () => setOrderSide("buy"));
+  document.getElementById("orderSellBtn")?.addEventListener("click", () => setOrderSide("sell"));
 
   document.getElementById("plusBtn")?.addEventListener("click", () => setBetPoints(sheetBetPoints + 1));
   document.getElementById("minusBtn")?.addEventListener("click", () => setBetPoints(Math.max(0, sheetBetPoints - 1)));
@@ -531,28 +781,53 @@ document.addEventListener("DOMContentLoaded", async () => {
     setBetPoints(Math.max(0, Number(me?.points || 0)));
   });
 
+  document.getElementById("adminResolveBtn")?.addEventListener("click", async () => {
+    await handleAdminResolve();
+  });
+  document.getElementById("adminClarifyBtn")?.addEventListener("click", async () => {
+    await handleAdminClarify();
+  });
+  document.getElementById("adminLogoutBtn")?.addEventListener("click", () => {
+    localStorage.removeItem(LS_ADMIN_KEY);
+    renderAdminPanel();
+  });
+  document.getElementById("adminRefreshBtn")?.addEventListener("click", async () => {
+    await refresh();
+  });
+  const deleteBtn = document.getElementById("adminDeleteEventBtn");
+  if (deleteBtn) {
+    deleteBtn.disabled = true;
+    deleteBtn.title = "未実装";
+    deleteBtn.classList.add("opacity-60", "cursor-not-allowed");
+  }
+
   // trade
   document.getElementById("tradeBtn")?.addEventListener("click", async () => {
     setSheetMsg("");
     try {
       const target = currentEvent();
       if (!target) throw new Error("レンジを選択してください");
-      if (target.status === "resolved") throw new Error("確定済みです");
+      if (target.status === "resolved" || target.status === "canceled" || target.status === "tradingClosed")
+        throw new Error("確定済みです");
       if (!selectedOutcome) throw new Error("YES/NO を選んでください");
 
       const priceBps = sheetPricePct * 100;
-      const points = sheetBetPoints;
-
-      // points→qty
-      const qty = Math.floor((points * UNIT_SCALE) / priceBps);
-      if (qty <= 0) throw new Error("ポイントが少なすぎます（qty=0）");
+      let qty = 0;
+      if (orderSide === "buy") {
+        const points = sheetBetPoints;
+        qty = Math.floor((points * UNIT_SCALE) / priceBps);
+        if (qty <= 0) throw new Error("ポイントが少なすぎます（qty=0）");
+      } else {
+        qty = Math.floor(sheetBetPoints);
+        if (qty <= 0) throw new Error("売却株数を入力してください");
+      }
 
       const out = await placeOrder({
         eventId: target.id,
         deviceId: auth.deviceId,
         name: me?.name || auth?.name || "Guest",
         outcome: selectedOutcome,
-        side: "buy",
+        side: orderSide,
         priceBps,
         qty,
       });
