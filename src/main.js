@@ -12,7 +12,7 @@ async function render() {
   const sortBy = document.getElementById("sortBy")?.value || "soon";
 
   let events = await getEvents();
-  events = events.filter((e) => e.status === "active");
+  events = events.filter((e) => e.status === "active" || e.status === "tradingClosed");
   if (cat) events = events.filter((e) => e.category === cat);
 
   if (sortBy === "soon") {

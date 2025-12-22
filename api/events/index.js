@@ -7,10 +7,10 @@ import {
   putEvent,
   listEventIds,
   getEvent,
-  k,
   PRICE_SCALE,
+  listRulesUpdates,
 } from "../_kv.js";
-import { kv } from "@vercel/kv";
+import { computeOrderbook, computeDisplayPrice, getLastTrade } from "../_market.js";
 
 function toNumber(v, fallback = 0) {
   const n = Number(v);
@@ -20,50 +20,6 @@ function toNumber(v, fallback = 0) {
 function clampBps(p) {
   const n = Math.round(toNumber(p, 5000));
   return Math.max(0, Math.min(PRICE_SCALE, n));
-}
-
-// Phase1の「現在価格」優先順位:
-// 1) best bid (open orders)
-// 2) last mint trade
-// 3) 0.5
-async function getBestBidsBps(eventId) {
-  const ids = await kv.smembers(k.ordersByEvent(eventId));
-  let yesBest = null;
-  let noBest = null;
-  let openOrders = 0;
-
-  for (const oid of Array.isArray(ids) ? ids : []) {
-    const o = await kv.get(k.order(eventId, oid));
-    if (!o || typeof o !== "object") continue;
-    if (o.status !== "open") continue;
-
-    const rem = toNumber(o.remaining, 0);
-    if (rem <= 0) continue;
-
-    openOrders++;
-    const pb = clampBps(o.priceBps);
-    const oc = String(o.outcome || "").toUpperCase();
-
-    if (oc === "YES") yesBest = yesBest == null ? pb : Math.max(yesBest, pb);
-    if (oc === "NO") noBest = noBest == null ? pb : Math.max(noBest, pb);
-  }
-
-  return { yesBest, noBest, openOrders };
-}
-
-async function getLastYesPriceBps(eventId) {
-  try {
-    const tradeIds = await kv.lrange(k.tradesByEvent(eventId), -1, -1); // last 1
-    const lastId = Array.isArray(tradeIds) ? tradeIds[0] : null;
-    if (!lastId) return 5000;
-
-    const t = await kv.get(k.trade(eventId, lastId));
-    if (!t || typeof t !== "object") return 5000;
-
-    return clampBps(t.yesPriceBps);
-  } catch {
-    return 5000;
-  }
 }
 
 export default async function handler(req, res) {
@@ -78,47 +34,44 @@ export default async function handler(req, res) {
         if (!ev) continue;
         if (ev.type === "range_child") continue;
 
-        const { yesBest, noBest, openOrders } = await getBestBidsBps(id);
-
-        let yesBps = yesBest;
-        let noBps = noBest;
-
-        // fallback to last trade anchor
-        if (yesBps == null && noBps == null) {
-          const lastYes = await getLastYesPriceBps(id);
-          yesBps = lastYes;
-          noBps = PRICE_SCALE - lastYes;
-        } else {
-          // 片側しか板が無い時は、残りは last trade / 0.5 で補完
-          const lastYes = await getLastYesPriceBps(id);
-          if (yesBps == null) yesBps = lastYes;
-          if (noBps == null) noBps = PRICE_SCALE - lastYes;
-        }
-
-        yesBps = clampBps(yesBps);
-        noBps = clampBps(noBps);
+        const orderbook = await computeOrderbook(id);
+        const lastTrade = await getLastTrade(id);
+        const display = computeDisplayPrice(orderbook, lastTrade);
 
         
+        const rulesUpdates = await listRulesUpdates(id);
+
+        const endTime = new Date(ev.endDate).getTime();
+        const status =
+          ev.status === "active" && Number.isFinite(endTime) && Date.now() >= endTime
+            ? "tradingClosed"
+            : ev.status;
 
         events.push({
           id: ev.id,
           title: ev.title,
           description: ev.description,
+          rules: ev.rules,
+          resolutionSource: ev.resolutionSource,
           category: ev.category,
-          status: ev.status, // active | resolved
+          status, // active | tradingClosed | resolved | canceled
           endDate: ev.endDate,
           createdAt: ev.createdAt,
+          rulesUpdates,
 
           prices: {
-            yes: yesBps / PRICE_SCALE,
-            no: noBps / PRICE_SCALE,
-            yesBps,
-            noBps,
+            yes: display.displayYesBps / PRICE_SCALE,
+            no: display.displayNoBps / PRICE_SCALE,
+            yesBps: display.displayYesBps,
+            noBps: display.displayNoBps,
+            midpointYesBps: display.midpointYesBps,
+            spreadYesBps: display.spreadYesBps,
+            source: display.source,
           },
 
           stats: {
             trades: toNumber(ev?.stats?.trades, 0),
-            openOrders: toNumber(ev?.stats?.openOrders, openOrders),
+            openOrders: toNumber(ev?.stats?.openOrders, orderbook.openOrders),
           },
 
           resolvedAt: ev.resolvedAt || null,
@@ -143,13 +96,15 @@ if (req.method === "POST") {
   if (!isAdminRequest(req))
     return res.status(401).send("admin only (set ADMIN_KEY)");
 
-  const { title, description, category, endDate, ranges } = req.body || {};
+  const { title, description, rules, resolutionSource, category, endDate, ranges } = req.body || {};
 
   const t = sanitizeText(title, 80);
   const d = sanitizeText(description, 400);
+  const r = sanitizeText(rules, 1200);
+  const src = sanitizeText(resolutionSource, 200);
   const c = sanitizeText(category, 30);
 
-  if (!t || !d || !c || !endDate)
+  if (!t || !d || !r || !src || !c || !endDate)
     return res.status(400).send("missing fields");
 
   const end = new Date(endDate).getTime();
@@ -160,6 +115,8 @@ if (req.method === "POST") {
     id,
     title: "",
     description: "",
+    rules: r,
+    resolutionSource: src,
     category: c,
     status: "active",
     createdAt: nowISO(),
@@ -210,6 +167,7 @@ if (req.method === "POST") {
         ...makeBase(childId),
         title: sanitizeText(childTitle, 80),
         description: sanitizeText(childDesc, 400),
+        rules: sanitizeText(`${r}\n\n${childDesc}`, 1200),
         type: "range_child",
         parentId,
         range: { lo, hi },

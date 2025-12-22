@@ -32,6 +32,7 @@ export default async function handler(req, res) {
       out.push({
         id: o.id,
         userId: o.userId,
+        side: o.side,
         outcome: o.outcome,
         priceBps: Number(o.priceBps || 0),
         qty: Number(o.qty || 0),

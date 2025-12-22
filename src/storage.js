@@ -12,8 +12,9 @@ export async function getEvents() {
   return api("/api/events");
 }
 
-export async function getEventById(id) {
-  return api(`/api/events/${encodeURIComponent(id)}`);
+export async function getEventById(id, deviceId) {
+  const qs = deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : "";
+  return api(`/api/events/${encodeURIComponent(id)}${qs}`);
 }
 
 /**
@@ -51,6 +52,18 @@ export async function placeOrder({ eventId, ...body }) {
     body: JSON.stringify(body),
   });
 }
+
+export async function addClarification({ eventId, text, by }, adminKey) {
+  const url = adminKey
+    ? `/api/events/${encodeURIComponent(eventId)}/clarify?key=${encodeURIComponent(adminKey)}`
+    : `/api/events/${encodeURIComponent(eventId)}/clarify`;
+  return api(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, by }),
+  });
+}
+
 
 /**
  * PM v2: マーケット確定（後で resolve API を差し替える前提）

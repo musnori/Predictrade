@@ -1,6 +1,7 @@
 // api/events/[id].js (PM v2) ✅ FIXED FULL
 import { kv } from "@vercel/kv";
-import { getEvent, k, PRICE_SCALE, bpsToProb } from "../_kv.js";
+import { getEvent, k, PRICE_SCALE, bpsToProb, listRulesUpdates } from "../_kv.js";
+import { computeOrderbook, computeDisplayPrice, getLastTrade } from "../_market.js";
 
 function toNum(v, fb = 0) {
   const n = Number(v);
@@ -12,68 +13,32 @@ function clampBps(v) {
   return Math.max(0, Math.min(PRICE_SCALE, n));
 }
 
-async function getLastYesPriceBps(eventId) {
-  try {
-    const tradeIds = await kv.lrange(k.tradesByEvent(eventId), -1, -1);
-    const lastId = Array.isArray(tradeIds) ? tradeIds[0] : null;
-    if (!lastId) return PRICE_SCALE / 2;
-
-    const t = await kv.get(k.trade(eventId, lastId));
-    if (!t || typeof t !== "object") return PRICE_SCALE / 2;
-
-    return clampBps(t.yesPriceBps);
-  } catch {
-    return PRICE_SCALE / 2;
-  }
-}
-
 async function computeMarketFor(eventId) {
-  const ids = await kv.smembers(k.ordersByEvent(eventId));
-  let yesBest = null;
-  let noBest = null;
-  let openOrders = 0;
-
-  for (const oid of Array.isArray(ids) ? ids : []) {
-    const o = await kv.get(k.order(eventId, oid));
-    if (!o || typeof o !== "object") continue;
-    if (o.status !== "open") continue;
-
-    const rem = toNum(o.remaining, 0);
-    if (rem <= 0) continue;
-
-    openOrders++;
-
-    const pb = clampBps(o.priceBps);
-    const oc = String(o.outcome || "").toUpperCase();
-    if (oc === "YES") yesBest = yesBest == null ? pb : Math.max(yesBest, pb);
-    if (oc === "NO") noBest = noBest == null ? pb : Math.max(noBest, pb);
-  }
-
-  const lastYes = await getLastYesPriceBps(eventId);
-
-  let yesBps = yesBest;
-  let noBps = noBest;
-
-  if (yesBps == null && noBps == null) {
-    yesBps = lastYes;
-    noBps = PRICE_SCALE - lastYes;
-  } else {
-    if (yesBps == null) yesBps = lastYes;
-    if (noBps == null) noBps = PRICE_SCALE - lastYes;
-  }
-
-  yesBps = clampBps(yesBps);
-  noBps = clampBps(noBps);
+  const orderbook = await computeOrderbook(eventId);
+  const lastTrade = await getLastTrade(eventId);
+  const display = computeDisplayPrice(orderbook, lastTrade);
 
   return {
     prices: {
-      yes: bpsToProb(yesBps),
-      no: bpsToProb(noBps),
-      yesBps,
-      noBps,
+      yes: bpsToProb(display.displayYesBps),
+      no: bpsToProb(display.displayNoBps),
+      yesBps: display.displayYesBps,
+      noBps: display.displayNoBps,
+      midpointYesBps: display.midpointYesBps,
+      spreadYesBps: display.spreadYesBps,
+      source: display.source,
     },
-    bestBidsBps: { yes: yesBps, no: noBps },
-    openOrders,
+    bestBidsBps: {
+      yes: orderbook.yes.bestBidBps,
+      no: orderbook.no.bestBidBps,
+    },
+    bestAsksBps: {
+      yes: orderbook.yes.bestAskBps,
+      no: orderbook.no.bestAskBps,
+    },
+    lastTrade,
+    orderbook,
+    openOrders: orderbook.openOrders,
   };
 }
 
@@ -83,12 +48,31 @@ export default async function handler(req, res) {
 
     const eventId = String(req.query.id || "").trim();
     if (!eventId) return res.status(400).send("event id required");
+    const deviceId = String(req.query.deviceId || "").trim();
 
     const ev = await getEvent(eventId);
     if (!ev) return res.status(404).send("event not found");
 
     // ✅ 自分の市場情報
     const m = await computeMarketFor(eventId);
+    const rulesUpdates = await listRulesUpdates(eventId);
+    const tradeIds = await kv.lrange(k.tradesByEvent(eventId), -20, -1).catch(() => []);
+    const trades = [];
+    for (const tid of Array.isArray(tradeIds) ? tradeIds : []) {
+      const t = await kv.get(k.trade(eventId, tid));
+      if (t && typeof t === "object") trades.push(t);
+    }
+    trades.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+
+    let position = null;
+    if (deviceId) {
+      const p = await kv.get(k.position(eventId, deviceId));
+      const obj = p && typeof p === "object" ? p : { yesQty: 0, noQty: 0 };
+      position = {
+        yesQty: toNum(obj.yesQty, 0),
+        noQty: toNum(obj.noQty, 0),
+      };
+    }
 
     // ✅ 親イベントなら children を集める
     let children = [];
@@ -100,10 +84,18 @@ export default async function handler(req, res) {
           const cev = await getEvent(cid);
           if (!cev) return null;
           const cm = await computeMarketFor(cid);
+          const childEnd = new Date(cev.endDate).getTime();
+          const childStatus =
+            cev.status === "active" && Number.isFinite(childEnd) && Date.now() >= childEnd
+              ? "tradingClosed"
+              : cev.status;
           return {
             ...cev,
+            status: childStatus,
             prices: cm.prices,
             bestBidsBps: cm.bestBidsBps,
+            bestAsksBps: cm.bestAsksBps,
+            orderbook: cm.orderbook,
             stats: { ...(cev.stats || {}), openOrders: cm.openOrders },
           };
         })
@@ -113,11 +105,24 @@ export default async function handler(req, res) {
       children.sort((a, b) => toNum(a.rank, 0) - toNum(b.rank, 0));
     }
 
+    const endTime = new Date(ev.endDate).getTime();
+    const status =
+      ev.status === "active" && Number.isFinite(endTime) && Date.now() >= endTime
+        ? "tradingClosed"
+        : ev.status;
+
     return res.status(200).json({
       ...ev,
+      status,
       prices: m.prices,
       bestBidsBps: m.bestBidsBps,
+      bestAsksBps: m.bestAsksBps,
+      lastTrade: m.lastTrade,
+      orderbook: m.orderbook,
       stats: { ...(ev.stats || {}), openOrders: m.openOrders },
+      rulesUpdates,
+      trades,
+      position,
       children,
     });
   } catch (e) {
