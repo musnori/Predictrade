@@ -1,908 +1,418 @@
-// src/event.js (PM v2 - Ladder UI + betPoints sheet)
 import { initAuthAndRender } from "./auth.js";
-import { initUserMenu } from "./userMenu.js";
-import {
-  getEventById,
-  getCategoryName,
-  placeOrder,
-  timeRemaining,
-  cancelOrder,
-  addClarification,
-  resolveEvent,
-} from "./storage.js";
+import { getEventById, placeOrder } from "./storage.js";
 
-let auth;
-let me = null;
-let ev;
-let activeEvent = null;
+let auth = null;
+let eventData = null;
+let outcomes = [];
+let selectedOutcome = null;
+let selectedSide = "YES";
+let orderSide = "buy";
 
-let selectedOutcome = null; // "YES" | "NO"
-let orderSide = "buy"; // buy | sell
-let sheetPricePct = 50; // 1..99
-let sheetBasePricePct = 50;
-let sheetBetPoints = 0;
-
-// units: 10000 units = 1pt
-const UNIT_SCALE = 10000;
-const LS_ADMIN_KEY = "predictrade.adminKey.v1";
-let adminKeyState = { key: "", ok: false, checked: false };
+const palette = ["#0ea5e9", "#22c55e", "#f97316", "#a855f7", "#ef4444", "#14b8a6"];
 
 function idFromQuery() {
   return new URLSearchParams(location.search).get("id");
 }
 
-function currentEvent() {
-  return activeEvent || ev;
+function isMockMode() {
+  const value = new URLSearchParams(location.search).get("mock");
+  return value === "1" || value === "true";
 }
 
-function isRangeParent() {
-  return ev?.type === "range_parent";
-}
-
-function unitsToPoints(units) {
-  const n = Number(units || 0);
-  return Math.floor(n / UNIT_SCALE);
-}
-
-function clampPct(v) {
-  const n = Math.round(Number(v));
-  if (!Number.isFinite(n)) return 50;
-  return Math.max(1, Math.min(99, n));
-}
-function clampPoints(v) {
-  const n = Math.floor(Number(v));
+function clampPct(value) {
+  const n = Number(value);
   if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(10_000_000, n));
+  return Math.max(0, Math.min(100, n));
 }
 
-function getAdminKey() {
-  return localStorage.getItem(LS_ADMIN_KEY) || "";
+function formatPctFromBps(bps) {
+  if (!Number.isFinite(bps)) return "—";
+  const pct = bps / 100;
+  return `${pct.toFixed(1).replace(/\.0$/, "")}%`;
 }
 
-async function verifyAdminKey(key) {
-  if (!key) return false;
-  const res = await fetch(`/api/admin/snapshot?key=${encodeURIComponent(key)}`);
-  return res.ok;
+function formatCentsFromBps(bps) {
+  if (!Number.isFinite(bps)) return "—";
+  const cents = bps / 100;
+  return `${cents.toFixed(1).replace(/\.0$/, "")}¢`;
 }
 
-async function ensureAdminAccess() {
-  const key = getAdminKey();
-  if (!key) {
-    adminKeyState = { key: "", ok: false, checked: false };
-    return false;
+function formatNumber(value) {
+  if (!Number.isFinite(value)) return "—";
+  return Number(value).toLocaleString();
+}
+
+function formatDate(value) {
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return "—";
+  return d.toLocaleDateString("ja-JP", { year: "numeric", month: "short", day: "numeric" });
+}
+
+function showError(message) {
+  const banner = document.getElementById("errorBanner");
+  if (!banner) return;
+  banner.textContent = message;
+  banner.classList.remove("hidden");
+}
+
+function showToast(message) {
+  const toast = document.getElementById("toast");
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.remove("hidden");
+  setTimeout(() => toast.classList.add("hidden"), 2400);
+}
+
+function buildOutcomeLabel(outcome) {
+  if (outcome?.label) return outcome.label;
+  if (outcome?.range?.lo != null && outcome?.range?.hi != null) {
+    const lo = Number(outcome.range.lo).toLocaleString("en-US");
+    const hi = Number(outcome.range.hi).toLocaleString("en-US");
+    return `$${lo}-$${hi}`;
   }
-  if (adminKeyState.checked && adminKeyState.key === key) return adminKeyState.ok;
-
-  const ok = await verifyAdminKey(key);
-  adminKeyState = { key, ok, checked: true };
-  if (!ok) localStorage.removeItem(LS_ADMIN_KEY);
-  return ok;
+  return outcome?.title || "—";
 }
 
-function setAdminGateVisible(show) {
-  const gate = document.getElementById("adminGate");
-  if (!gate) return;
-  gate.classList.toggle("hidden", !show);
+function normalizeOutcomes(ev) {
+  if (!ev) return [];
+  if (Array.isArray(ev.outcomes) && ev.outcomes.length) {
+    return ev.outcomes.map((outcome) => {
+      const yesBps = Number(outcome.yesBps ?? outcome.chanceBps ?? 0);
+      const noBps = Number(outcome.noBps ?? 10000 - yesBps);
+      return {
+        id: String(outcome.id ?? outcome.label ?? "outcome"),
+        label: buildOutcomeLabel(outcome),
+        chanceBps: Number(outcome.chanceBps ?? yesBps),
+        yesBps,
+        noBps,
+        volume: Number(outcome.volume ?? 0),
+        eventId: outcome.eventId ?? ev.id,
+        status: outcome.status ?? ev.status,
+        range: outcome.range ?? null,
+      };
+    });
+  }
+  if (Array.isArray(ev.children) && ev.children.length) {
+    return ev.children.map((child) => ({
+      id: child.id,
+      label: buildOutcomeLabel(child),
+      chanceBps: Number(child?.prices?.yesBps ?? 0),
+      yesBps: Number(child?.prices?.yesBps ?? 0),
+      noBps: Number(child?.prices?.noBps ?? 0),
+      volume: Number(child?.stats?.trades ?? 0),
+      eventId: child.id,
+      status: child.status,
+      range: child.range ?? null,
+    }));
+  }
+  return [];
 }
 
-function setAdminGateMsg(text) {
-  const msg = document.getElementById("adminGateMsg");
-  if (msg) msg.textContent = text || "";
+function buildMockEvent() {
+  return {
+    id: "mock-gold-2025",
+    title: "What price will gold close at in 2025?",
+    description: "Polymarket風のレンジ市場デモです。価格帯ごとに選択できます。",
+    endDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 120).toISOString(),
+    stats: { trades: 12450 },
+    outcomes: [
+      { id: "lt4000", label: "<$4,000", chanceBps: 420, yesBps: 420, noBps: 9580, volume: 1800 },
+      { id: "4000-4100", label: "$4,000-$4,100", chanceBps: 860, yesBps: 860, noBps: 9140, volume: 2600 },
+      { id: "4100-4200", label: "$4,100-$4,200", chanceBps: 1320, yesBps: 1320, noBps: 8680, volume: 3100 },
+      { id: "4200-4300", label: "$4,200-$4,300", chanceBps: 2100, yesBps: 2100, noBps: 7900, volume: 2400 },
+      { id: "4300-4400", label: "$4,300-$4,400", chanceBps: 3100, yesBps: 3100, noBps: 6900, volume: 1800 },
+      { id: "gt4400", label: ">$4,400", chanceBps: 2200, yesBps: 2200, noBps: 7800, volume: 1750 },
+    ],
+  };
 }
 
-/* ================= Header/User ================= */
-
-function renderMe(u) {
-  const name = String(u?.name || u?.displayName || "");
-  const pointsMaybe = Number(u?.points || 0);
-
-  const unitsMaybe = Number(
-    u?.pointsUnits ?? u?.balanceUnits?.available ?? u?.availableUnits ?? 0
-  );
-
-  let points = 0;
-  if (Number.isFinite(unitsMaybe) && unitsMaybe >= 0) points = unitsToPoints(unitsMaybe);
-  else points = Math.floor(pointsMaybe);
-
-  me = { name, points, unitsAvailable: unitsMaybe };
-
-  const pointsEl = document.getElementById("userPoints");
-  if (pointsEl) pointsEl.textContent = me.points.toLocaleString();
-
+function renderHeader() {
+  const name = auth?.name || "";
+  const points = Number(auth?.points ?? 0);
+  const authButtons = document.getElementById("authButtons");
+  const userSummary = document.getElementById("userSummary");
+  if (name && userSummary) {
+    userSummary.classList.remove("hidden");
+    if (authButtons) authButtons.classList.add("hidden");
+  }
   const nameEl = document.getElementById("userName");
-  if (nameEl) nameEl.textContent = me.name || "Guest";
+  const pointsEl = document.getElementById("userPoints");
+  if (nameEl) nameEl.textContent = name || "Guest";
+  if (pointsEl) pointsEl.textContent = Number.isFinite(points) ? points.toLocaleString() : "—";
 }
 
 function renderMeta() {
-  const end = new Date(ev.endDate);
-  const meta = document.getElementById("eventMeta");
-  if (meta) {
-    meta.textContent = `${end.toLocaleString("ja-JP")}（${timeRemaining(ev.endDate)}）`;
-  }
+  const titleEl = document.getElementById("eventTitle");
+  const descEl = document.getElementById("eventDesc");
+  const metaEl = document.getElementById("eventMeta");
+  const volEl = document.getElementById("eventVol");
+  const endEl = document.getElementById("eventEnd");
 
-  const categoryBadge = document.getElementById("categoryBadge");
-  if (categoryBadge) {
-    categoryBadge.textContent = getCategoryName(ev.category || "other");
-  }
+  if (titleEl) titleEl.textContent = eventData?.title ?? "—";
+  if (descEl) descEl.textContent = eventData?.description ?? "—";
 
-  const marketTime = document.getElementById("marketTime");
-  if (marketTime) {
-    marketTime.textContent = timeRemaining(ev.endDate);
-  }
-  const titleEl = document.getElementById("title");
-  if (titleEl) titleEl.textContent = ev.title ?? "-";
-  const descEl = document.getElementById("desc");
-  if (descEl) descEl.textContent = ev.description ?? "-";
+  const volume = Number(eventData?.volume ?? eventData?.stats?.trades ?? NaN);
+  const endDate = formatDate(eventData?.endDate);
+  if (metaEl) metaEl.textContent = `Vol ${Number.isFinite(volume) ? formatNumber(volume) : "—"} • End date ${endDate}`;
+  if (volEl) volEl.textContent = Number.isFinite(volume) ? formatNumber(volume) : "—";
+  if (endEl) endEl.textContent = endDate;
 }
 
-function updateResolvedBadge() {
-  const badge = document.getElementById("resolvedBadge");
-  if (!badge) return;
-
-  if (ev.status === "resolved") {
-    badge.classList.remove("hidden");
-    badge.textContent = `確定：${ev.result || "-"}`;
-  } else if (ev.status === "tradingClosed") {
-    badge.classList.remove("hidden");
-    badge.textContent = "取引終了";
-  } else {
-    badge.classList.add("hidden");
-  }
-}
-
-/* ================= Range Outcomes ================= */
-
-function formatRangeLabel(child) {
-  const lo = child?.range?.lo;
-  const hi = child?.range?.hi;
-  if (Number.isFinite(lo) && Number.isFinite(hi)) {
-    return `${lo}〜${hi}`;
-  }
-  return child?.title ?? "-";
-}
-
-function setActiveEvent(nextEvent) {
-  activeEvent = nextEvent || null;
-  renderRangeOutcomes();
-  renderLadder();
-  void renderMyOrders();
-}
-
-function renderRangeOutcomes() {
-  const wrap = document.getElementById("rangeOutcomes");
-  const rows = document.getElementById("rangeRows");
-  if (!wrap || !rows) return;
-
-  if (!isRangeParent()) {
-    wrap.classList.add("hidden");
-    rows.innerHTML = "";
-    return;
-  }
-
-  const children = Array.isArray(ev?.children) ? ev.children : [];
-  if (children.length === 0) {
-    wrap.classList.add("hidden");
-    rows.innerHTML = "";
-    return;
-  }
-
-  wrap.classList.remove("hidden");
-  rows.innerHTML = "";
-
-  children.forEach((child) => {
-    const yesPct = clampPct(Math.round(Number(child?.prices?.yes ?? 0.5) * 100));
-    const noPct = 100 - yesPct;
-    const selected = activeEvent?.id === child.id;
-
-    const row = document.createElement("div");
-    row.className =
-      "range-row grid grid-cols-[1fr_auto_auto] gap-3 items-center px-6 py-4 opt" +
-      (selected ? " selected" : "");
-
-    row.innerHTML = `
-      <div>
-        <div class="font-semibold text-slate-200">${formatRangeLabel(child)}</div>
-        <div class="text-xs text-slate-400">${child?.stats?.trades ?? 0} trades</div>
-      </div>
-      <button class="buyYes px-3 py-2 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-600/30 text-emerald-200 text-sm">
-        Yes ${yesPct}%
-      </button>
-      <button class="buyNo px-3 py-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/25 text-sky-100 text-sm">
-        No ${noPct}%
-      </button>
-    `;
-
-    row.addEventListener("click", () => setActiveEvent(child));
-
-    row.querySelector(".buyYes")?.addEventListener("click", (event) => {
-      event.stopPropagation();
-      if (child.status === "resolved" || child.status === "tradingClosed") return;
-      setActiveEvent(child);
-      openSheet("YES", yesPct, child);
-    });
-
-    row.querySelector(".buyNo")?.addEventListener("click", (event) => {
-      event.stopPropagation();
-      if (child.status === "resolved" || child.status === "tradingClosed") return;
-      setActiveEvent(child);
-      openSheet("NO", noPct, child);
-    });
-
-    rows.appendChild(row);
-  });
-}
-
-/* ================= Ladder ================= */
-
-function getTickBps() {
-  const v = Number(currentEvent()?.market?.tickBps ?? 100);
-  return Number.isFinite(v) && v > 0 ? v : 100;
-}
-function getCenterYesPct() {
-  // v2なら ev.market.initialPriceBps、なければ ev.prices.yes、なければ50
-  const target = currentEvent();
-  const bps =
-    Number(target?.market?.initialPriceBps) ||
-    Math.round(Number(target?.prices?.yes ?? 0.5) * 10000) ||
-    5000;
-  const pct = Math.round(bps / 100);
-  return clampPct(pct);
-}
-
-function buildLadderYesPcts(centerPct, tickBps, rows = 13) {
-  const tickPct = Math.max(1, Math.round(tickBps / 100)); // 100bps=1%
-  const half = Math.floor(rows / 2);
+function buildSeededSeries(seed, basePct, points = 20) {
+  const seeded = Array.from(seed).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
   const out = [];
-  for (let i = half; i >= -half; i--) {
-    out.push(clampPct(centerPct + i * tickPct));
+  for (let i = 0; i < points; i += 1) {
+    const wobble = Math.sin((i + seeded) * 0.7) * 6 + Math.cos((i + seeded) * 0.4) * 3;
+    const pct = clampPct(basePct + wobble);
+    out.push(pct);
   }
-  // 重複排除（端でクランプされると同値が出る）
-  return Array.from(new Set(out));
+  return out;
 }
 
-function renderLadder() {
-  const rowsEl = document.getElementById("ladderRows");
-  if (!rowsEl) return;
-  const target = currentEvent();
-  if (!target) {
-    rowsEl.innerHTML = "";
-    updateMarketSnapshot(50);
+function renderChart() {
+  const chart = document.getElementById("outcomeChart");
+  const legend = document.getElementById("chartLegend");
+  if (!chart || !legend) return;
+
+  chart.innerHTML = "";
+  legend.innerHTML = "";
+
+  if (!outcomes.length) {
+    chart.innerHTML = '<text x="50" y="20" text-anchor="middle" fill="#94a3b8" font-size="4">No chart data</text>';
     return;
   }
 
-  const center = getCenterYesPct();
-  const tickBps = getTickBps();
-  const pcts = buildLadderYesPcts(center, tickBps, 13);
+  const maxLines = Math.min(outcomes.length, palette.length);
+  for (let i = 0; i < maxLines; i += 1) {
+    const outcome = outcomes[i];
+    const color = palette[i % palette.length];
+    const basePct = Number(outcome.chanceBps ?? outcome.yesBps ?? 0) / 100;
+    const series = buildSeededSeries(outcome.id, basePct);
+    const path = series
+      .map((pct, idx) => {
+        const x = (idx / (series.length - 1)) * 100;
+        const y = 40 - (pct / 100) * 40;
+        return `${idx === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+      })
+      .join(" ");
 
-  rowsEl.innerHTML = "";
-  pcts.forEach((yesPct) => {
-    const noPct = 100 - yesPct;
+    const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    pathEl.setAttribute("d", path);
+    pathEl.setAttribute("fill", "none");
+    pathEl.setAttribute("stroke", color);
+    pathEl.setAttribute("stroke-width", "1.6");
+    pathEl.setAttribute("stroke-linecap", "round");
+    chart.appendChild(pathEl);
 
+    const item = document.createElement("div");
+    item.className = "flex items-center gap-2";
+    item.innerHTML = `<span class="legend-dot" style="background:${color}"></span>${outcome.label}`;
+    legend.appendChild(item);
+  }
+}
+
+function renderOutcomeRows() {
+  const container = document.getElementById("outcomeRows");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!outcomes.length) {
+    container.innerHTML = '<div class="px-6 py-6 text-sm text-slate-400">Outcomes are not available yet.</div>';
+    return;
+  }
+
+  outcomes.forEach((outcome) => {
     const row = document.createElement("div");
-    row.className =
-      "grid grid-cols-3 gap-2 px-6 py-2 border-b border-slate-800 items-center";
-
-    row.innerHTML = `
-      <button class="buyYes px-3 py-2 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-600/30 text-emerald-200 text-sm text-left">
-        Buy YES
-        <div class="text-xs text-emerald-300/80">${yesPct}%</div>
-      </button>
-
-      <div class="text-center text-slate-200 font-semibold">
-        ${yesPct}%
-      </div>
-
-      <button class="buyNo px-3 py-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/25 text-sky-100 text-sm text-right">
-        Buy NO
-        <div class="text-xs text-sky-200/80">${noPct}%</div>
-      </button>
-    `;
-
-    row.querySelector(".buyYes")?.addEventListener("click", () => {
-      if (target.status === "resolved" || target.status === "tradingClosed") return;
-      openSheet("YES", yesPct, target);
-    });
-
-    row.querySelector(".buyNo")?.addEventListener("click", () => {
-      if (target.status === "resolved" || target.status === "tradingClosed") return;
-      // NOの価格は (100 - YES価格)
-      openSheet("NO", noPct, target);
-    });
-
-    rowsEl.appendChild(row);
-  });
-
-  updateMarketSnapshot();
-}
-
-function fmtPctFromBps(bps) {
-  if (!Number.isFinite(bps)) return "-";
-  return `${Math.round(bps / 100)}%`;
-}
-
-function renderOrderbook() {
-  const target = currentEvent();
-  const yesBidsEl = document.getElementById("yesBids");
-  const yesAsksEl = document.getElementById("yesAsks");
-  const noBidsEl = document.getElementById("noBids");
-  const noAsksEl = document.getElementById("noAsks");
-  const statusEl = document.getElementById("orderbookStatus");
-
-  if (!yesBidsEl || !yesAsksEl || !noBidsEl || !noAsksEl) return;
-
-  const orderbook = target?.orderbook;
-  if (!orderbook) {
-    yesBidsEl.innerHTML = "<div class='text-xs text-slate-500'>-</div>";
-    yesAsksEl.innerHTML = "<div class='text-xs text-slate-500'>-</div>";
-    noBidsEl.innerHTML = "<div class='text-xs text-slate-500'>-</div>";
-    noAsksEl.innerHTML = "<div class='text-xs text-slate-500'>-</div>";
-    if (statusEl) statusEl.textContent = "-";
-    return;
-  }
-
-  const renderLevels = (levels) =>
-    levels
-      .slice(0, 6)
-      .map(
-        (lvl) => `
-        <div class="flex items-center justify-between text-xs bg-slate-900/40 border border-slate-800 rounded-lg px-2 py-1">
-          <span>${fmtPctFromBps(lvl.priceBps)}</span>
-          <span class="text-slate-400">${Number(lvl.qty || 0)}</span>
-        </div>`
-      )
-      .join("");
-
-  yesBidsEl.innerHTML = renderLevels(orderbook.yes?.bids || []);
-  yesAsksEl.innerHTML = renderLevels(orderbook.yes?.asks || []);
-  noBidsEl.innerHTML = renderLevels(orderbook.no?.bids || []);
-  noAsksEl.innerHTML = renderLevels(orderbook.no?.asks || []);
-
-  if (statusEl) statusEl.textContent = `open orders: ${orderbook.openOrders || 0}`;
-}
-
-function renderRules() {
-  const rulesEl = document.getElementById("rulesText");
-  const updatesEl = document.getElementById("rulesUpdates");
-  const sourceEl = document.getElementById("resolutionSourceText");
-  if (rulesEl) rulesEl.textContent = ev?.rules || ev?.description || "-";
-  if (sourceEl) sourceEl.textContent = ev?.resolutionSource || "-";
-  if (!updatesEl) return;
-  const updates = Array.isArray(ev?.rulesUpdates) ? ev.rulesUpdates : [];
-  if (updates.length === 0) {
-    updatesEl.innerHTML = `<div class="text-xs text-slate-500">追加コンテキストはありません</div>`;
-    return;
-  }
-  updatesEl.innerHTML = "";
-  updates
-    .slice()
-    .sort((a, b) => String(a.at).localeCompare(String(b.at)))
-    .forEach((u) => {
-      const row = document.createElement("div");
-      row.className = "rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2";
-      row.innerHTML = `
-        <div class="text-xs text-slate-500">${new Date(u.at).toLocaleString("ja-JP")} • ${u.by || "admin"}</div>
-        <div class="mt-1">${u.text}</div>
-      `;
-      updatesEl.appendChild(row);
-    });
-}
-
-async function renderTrades() {
-  const listEl = document.getElementById("tradeRows");
-  if (!listEl) return;
-  const trades = Array.isArray(ev?.trades) ? ev.trades : [];
-  if (!trades.length) {
-    listEl.innerHTML = `<div class="text-xs text-slate-500">まだ約定がありません</div>`;
-    return;
-  }
-  listEl.innerHTML = "";
-  trades.forEach((t) => {
-    const yesPct = Math.round(Number(t.yesPriceBps || 0) / 100);
-    const row = document.createElement("div");
-    row.className = "flex items-center justify-between text-xs bg-slate-900/40 border border-slate-800 rounded-lg px-3 py-2";
-    row.innerHTML = `
-      <div>${new Date(t.createdAt).toLocaleTimeString("ja-JP")} • ${t.kind || "-"}</div>
-      <div class="text-slate-300">${yesPct}% • ${t.qty} shares</div>
-    `;
-    listEl.appendChild(row);
-  });
-}
-
-async function renderPositions() {
-  const posYes = document.getElementById("posYes");
-  const posNo = document.getElementById("posNo");
-  const posValue = document.getElementById("positionsValue");
-  const target = currentEvent();
-  if (!target || !posYes || !posNo || !posValue) return;
-
-  const position = target?.position ?? ev?.position;
-  if (!position) {
-    posYes.textContent = "-";
-    posNo.textContent = "-";
-    posValue.textContent = "-";
-    return;
-  }
-
-  const yesQty = Number(position?.yesQty || 0);
-  const noQty = Number(position?.noQty || 0);
-  const yesPrice = Number(target?.prices?.yes ?? 0);
-  const noPrice = Number(target?.prices?.no ?? 0);
-  const val = yesQty * yesPrice + noQty * noPrice;
-
-  posYes.textContent = yesQty.toLocaleString();
-  posNo.textContent = noQty.toLocaleString();
-  posValue.textContent = `${val.toFixed(2)} pt`;
-}
-
-function updateMarketSnapshot() {
-  const target = currentEvent();
-  const yesPct = clampPct(
-    Math.round(Number(target?.prices?.yes ?? 0.5) * 100) || getCenterYesPct()
-  );
-  const noPct = 100 - yesPct;
-
-  const yesEl = document.getElementById("marketPriceYes");
-  const noEl = document.getElementById("marketPriceNo");
-  const splitEl = document.getElementById("marketSplitText");
-  const barEl = document.getElementById("marketYesBar");
-  const quickYesPrice = document.getElementById("quickYesPrice");
-  const quickNoPrice = document.getElementById("quickNoPrice");
-
-  if (yesEl) yesEl.textContent = `${yesPct}%`;
-  if (noEl) noEl.textContent = `${noPct}%`;
-  if (splitEl) splitEl.textContent = `${yesPct}% / ${noPct}%`;
-  if (barEl) barEl.style.width = `${yesPct}%`;
-  if (quickYesPrice) quickYesPrice.textContent = `${yesPct}%`;
-  if (quickNoPrice) quickNoPrice.textContent = `${noPct}%`;
-
-  const bestBidYes = document.getElementById("bestBidYes");
-  const bestAskYes = document.getElementById("bestAskYes");
-  const spreadEl = document.getElementById("marketSpread");
-  const sourceEl = document.getElementById("displaySource");
-
-  const bidBps = Number(target?.bestBidsBps?.yes);
-  const askBps = Number(target?.bestAsksBps?.yes);
-  const spreadBps = Number(target?.prices?.spreadYesBps);
-  const source = target?.prices?.source || "-";
-
-  if (bestBidYes) bestBidYes.textContent = Number.isFinite(bidBps) ? `${Math.round(bidBps / 100)}%` : "-";
-  if (bestAskYes) bestAskYes.textContent = Number.isFinite(askBps) ? `${Math.round(askBps / 100)}%` : "-";
-  if (spreadEl) {
-    spreadEl.textContent =
-      Number.isFinite(spreadBps) ? `${(spreadBps / 100).toFixed(2)}%` : "-";
-  }
-  if (sourceEl) sourceEl.textContent = source;
-}
-
-/* ================= Bottom Sheet ================= */
-
-const overlayEl = () => document.getElementById("sheetOverlay");
-const sheetEl = () => document.getElementById("sheet");
-const sheetMsgEl = () => document.getElementById("sheetMsg");
-
-const sheetOptionTextEl = () => document.getElementById("sheetOptionText");
-const sheetSideLabelEl = () => document.getElementById("sheetSideLabel");
-const sheetProbEl = () => document.getElementById("sheetProb");
-const betUnitEl = () => document.getElementById("betUnit");
-
-const betBigEl = () => document.getElementById("betBig");
-const betInputEl = () => document.getElementById("betPoints");
-const payoutEl = () => document.getElementById("payout");
-
-function showSheet(show) {
-  const ov = overlayEl();
-  const sh = sheetEl();
-  if (!ov || !sh) return;
-  ov.classList.toggle("overlay-hidden", !show);
-  sh.classList.toggle("sheet-hidden", !show);
-  sh.setAttribute("aria-hidden", String(!show));
-}
-
-function setSheetMsg(text) {
-  const el = sheetMsgEl();
-  if (el) el.textContent = text || "";
-}
-
-function setSheetPricePct(pct) {
-  sheetPricePct = clampPct(pct);
-  if (sheetProbEl()) sheetProbEl().textContent = `${sheetPricePct}%`;
-  computeDerived();
-}
-
-function setOrderSide(next) {
-  orderSide = next;
-  const buyBtn = document.getElementById("orderBuyBtn");
-  const sellBtn = document.getElementById("orderSellBtn");
-  if (buyBtn && sellBtn) {
-    const buyActive = orderSide === "buy";
-    buyBtn.className = buyActive
-      ? "flex-1 px-3 py-2 rounded-lg bg-emerald-600/20 border border-emerald-600/40 text-emerald-200 text-sm"
-      : "flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm";
-    sellBtn.className = !buyActive
-      ? "flex-1 px-3 py-2 rounded-lg bg-sky-500/20 border border-sky-500/40 text-sky-100 text-sm"
-      : "flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm";
-  }
-  if (betUnitEl()) betUnitEl().textContent = orderSide === "sell" ? "shares" : "pt";
-  computeDerived();
-}
-
-function computeImpactPct(points) {
-  const liquidity = Number(currentEvent()?.market?.liquidityPoints ?? 500);
-  const tickPct = Math.max(1, Math.round(getTickBps() / 100));
-  const safeLiquidity = Number.isFinite(liquidity) && liquidity > 0 ? liquidity : 500;
-  const rawImpact = (Number(points || 0) / safeLiquidity) * 10;
-  const stepped = Math.round(rawImpact / tickPct) * tickPct;
-  return Math.min(20, Math.max(0, stepped));
-}
-
-function computePricePctForPoints(points) {
-  const base = clampPct(sheetBasePricePct);
-  const impact = computeImpactPct(points);
-  if (selectedOutcome === "NO") return clampPct(base - impact);
-  return clampPct(base + impact);
-}
-
-function setBetPoints(v) {
-  sheetBetPoints = clampPoints(v);
-  if (betInputEl()) betInputEl().value = String(sheetBetPoints);
-  if (betBigEl()) betBigEl().textContent = String(sheetBetPoints);
-  setSheetPricePct(computePricePctForPoints(sheetBetPoints));
-}
-
-function computeDerived() {
-  // priceBps = 1..99% -> 100..9900
-  const priceBps = sheetPricePct * 100;
-  const amount = sheetBetPoints;
-
-  if (orderSide === "buy") {
-    const qty = Math.floor((amount * UNIT_SCALE) / priceBps);
-    if (payoutEl()) {
-      payoutEl().textContent =
-        qty > 0 ? `当たれば ${qty.toLocaleString()} pt（想定）` : "—";
-    }
-  } else {
-    const proceeds = (amount * priceBps) / UNIT_SCALE;
-    if (payoutEl()) {
-      payoutEl().textContent =
-        amount > 0 ? `受取見込み ${proceeds.toFixed(2)} pt` : "—";
-    }
-  }
-}
-
-function openSheet(outcome, pricePct, targetEvent = currentEvent()) {
-  const target = targetEvent || currentEvent();
-  activeEvent = target || null;
-  selectedOutcome = outcome;
-  setSheetMsg("");
-
-  // ヘッダ表示
-  if (sheetOptionTextEl()) sheetOptionTextEl().textContent = target?.title ?? ev?.title ?? "-";
-  if (sheetSideLabelEl()) sheetSideLabelEl().textContent = outcome === "YES" ? "Yes" : "No";
-
-  sheetBasePricePct = clampPct(pricePct);
-  setSheetPricePct(sheetBasePricePct);
-  setBetPoints(0);
-  setOrderSide("buy");
-
-  showSheet(true);
-}
-
-/* ================= My Orders (optional UI) ================= */
-
-async function renderMyOrders() {
-  const wrap = document.getElementById("myOrders");
-  if (!wrap) return; // event.htmlに無ければ何もしない
-
-  const target = currentEvent();
-  if (!target) {
-    wrap.innerHTML = `<div class="text-sm font-semibold">My orders</div>
-      <div class="mt-3 text-slate-400 text-sm">レンジを選択してください</div>`;
-    return;
-  }
-
-  let orders = [];
-  orders = Array.isArray(ev?.myOpenOrders) ? ev.myOpenOrders : [];
-
-  wrap.innerHTML = `<div class="text-sm font-semibold">My orders</div>`;
-  const list = document.createElement("div");
-  list.className = "mt-3 space-y-2";
-  if (orders.length === 0) {
-    list.innerHTML = `<div class="text-slate-400 text-sm">未約定の注文はありません</div>`;
-    wrap.appendChild(list);
-    return;
-  }
-
-  orders.forEach((o) => {
-    const row = document.createElement("div");
-    row.className =
-      "flex items-center justify-between gap-2 bg-slate-900/40 border border-slate-700 rounded-xl px-3 py-2";
-
-    const pct = Math.round(Number(o.priceBps || 0) / 100);
-    const lockedPt = (Number(o.remaining || 0) * Number(o.priceBps || 0)) / UNIT_SCALE;
-    const sideLabel = o.side === "sell" ? "SELL" : "BUY";
-    const lockText =
-      o.side === "sell"
-        ? `ロック: ${Number(o.remaining || 0)} shares`
-        : `ロック: ${lockedPt.toFixed(2)} pt`;
+    row.className = "outcome-row grid grid-cols-[minmax(0,1.3fr)_90px_120px_minmax(180px,1fr)] gap-4 items-center px-6 py-4";
+    if (selectedOutcome?.id === outcome.id) row.classList.add("selected");
 
     row.innerHTML = `
       <div>
-        <div class="font-semibold">${sideLabel} ${o.outcome} @ ${pct}%</div>
-        <div class="text-xs text-slate-400">残り: ${Number(o.remaining || 0)} / ${lockText}</div>
+        <div class="font-semibold text-slate-900">${outcome.label}</div>
+        <div class="text-xs text-slate-500">Range volume</div>
       </div>
-      <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">キャンセル</button>
+      <div class="text-sm text-slate-500">${formatNumber(outcome.volume)}</div>
+      <div class="text-lg font-semibold text-slate-900">${formatPctFromBps(outcome.chanceBps)}</div>
+      <div class="flex flex-wrap gap-2">
+        <button class="buy-yes px-3 py-2 rounded-full text-xs font-semibold btn-yes">Buy Yes ${formatCentsFromBps(outcome.yesBps)}</button>
+        <button class="buy-no px-3 py-2 rounded-full text-xs font-semibold btn-no">Buy No ${formatCentsFromBps(outcome.noBps)}</button>
+      </div>
     `;
 
-    row.querySelector("button").onclick = async () => {
-      if (!confirm(`注文をキャンセルしますか？（残り ${o.remaining}）`)) return;
-      const out = await cancelOrder(target.id, o.id, auth.deviceId);
+    row.addEventListener("click", () => setSelectedOutcome(outcome));
 
-      if (out?.balanceUnits) {
-        renderMe({ name: me?.name, pointsUnits: out.balanceUnits.available });
+    row.querySelector(".buy-yes")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setSelectedOutcome(outcome, "YES");
+    });
+
+    row.querySelector(".buy-no")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setSelectedOutcome(outcome, "NO");
+    });
+
+    container.appendChild(row);
+  });
+}
+
+function renderTradeCard() {
+  const labelEl = document.getElementById("selectedOutcomeLabel");
+  const priceEl = document.getElementById("selectedPrice");
+  if (labelEl) labelEl.textContent = selectedOutcome?.label ?? "—";
+
+  const priceBps =
+    selectedSide === "YES" ? selectedOutcome?.yesBps : selectedOutcome?.noBps;
+  if (priceEl) priceEl.textContent = formatCentsFromBps(priceBps);
+
+  const buyTab = document.getElementById("tradeBuyTab");
+  const sellTab = document.getElementById("tradeSellTab");
+  if (buyTab && sellTab) {
+    if (orderSide === "buy") {
+      buyTab.classList.add("tab-active");
+      sellTab.classList.remove("tab-active");
+    } else {
+      sellTab.classList.add("tab-active");
+      buyTab.classList.remove("tab-active");
+    }
+  }
+
+  const yesBtn = document.getElementById("sideYesBtn");
+  const noBtn = document.getElementById("sideNoBtn");
+  if (yesBtn && noBtn) {
+    if (selectedSide === "YES") {
+      yesBtn.classList.add("side-active-yes");
+      noBtn.classList.remove("side-active-no");
+    } else {
+      noBtn.classList.add("side-active-no");
+      yesBtn.classList.remove("side-active-yes");
+    }
+  }
+}
+
+function setSelectedOutcome(outcome, side) {
+  selectedOutcome = outcome;
+  if (side) selectedSide = side;
+  renderOutcomeRows();
+  renderTradeCard();
+}
+
+async function submitTrade() {
+  if (!selectedOutcome) {
+    showToast("Select an outcome first.");
+    return;
+  }
+  if (orderSide === "sell") {
+    showToast("Sell flow is coming soon.");
+    return;
+  }
+
+  const amountInput = document.getElementById("tradeAmount");
+  const raw = Number(amountInput?.value ?? 0);
+  const qty = Math.max(1, Math.floor(raw || 0));
+  if (!Number.isFinite(qty) || qty <= 0) {
+    showToast("Enter a valid amount.");
+    return;
+  }
+
+  const priceBps = selectedSide === "YES" ? selectedOutcome.yesBps : selectedOutcome.noBps;
+
+  try {
+    await placeOrder({
+      eventId: selectedOutcome.eventId ?? eventData?.id,
+      deviceId: auth?.deviceId,
+      name: auth?.name,
+      outcome: selectedSide,
+      side: "buy",
+      priceBps: Number(priceBps ?? 0),
+      qty,
+    });
+    showToast("Trade submitted.");
+  } catch (error) {
+    showToast(error?.message || "Trade failed.");
+  }
+}
+
+function bindUI() {
+  document.querySelectorAll("[data-range]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const range = btn.dataset.range;
+      if (range !== "ALL") {
+        showToast("Time range filters are coming soon.");
       }
-      activeEvent = out.event || target;
-      await refresh();
-      await renderMyOrders();
-    };
-
-    list.appendChild(row);
+    });
   });
 
-  wrap.appendChild(list);
-}
-
-async function renderAdminPanel() {
-  const panel = document.getElementById("adminPanel");
-  if (!panel) return;
-  const ok = await ensureAdminAccess();
-  if (!ok) {
-    panel.classList.add("hidden");
-    setAdminGateVisible(true);
-    return;
-  }
-  panel.classList.remove("hidden");
-  setAdminGateVisible(false);
-
-  const select = document.getElementById("adminResolveSelect");
-  if (select && select.children.length === 0) {
-    select.innerHTML = `
-      <option value="YES">YES</option>
-      <option value="NO">NO</option>
-    `;
-  }
-
-  const participants = document.getElementById("adminParticipants");
-  if (participants) {
-    participants.innerHTML = `
-      <div class="text-xs text-slate-400">Trades: ${ev?.stats?.trades ?? 0}</div>
-      <div class="text-xs text-slate-400">Open orders: ${ev?.stats?.openOrders ?? 0}</div>
-    `;
-  }
-}
-
-async function handleAdminResolve() {
-  const msg = document.getElementById("adminResolveMsg");
-  if (msg) msg.textContent = "";
-  const key = getAdminKey();
-  if (!key) return;
-  const select = document.getElementById("adminResolveSelect");
-  const result = select?.value;
-  if (!result) return;
-
-  try {
-    await resolveEvent({ eventId: currentEvent().id, result }, key);
-    await refresh();
-    if (msg) msg.textContent = "確定しました";
-  } catch (e) {
-    if (msg) msg.textContent = String(e?.message || e);
-  }
-}
-
-async function handleAdminClarify() {
-  const msg = document.getElementById("adminClarifyMsg");
-  if (msg) msg.textContent = "";
-  const key = getAdminKey();
-  if (!key) return;
-  const text = document.getElementById("adminClarifyText")?.value?.trim();
-  const by = document.getElementById("adminClarifyBy")?.value?.trim();
-  if (!text) {
-    if (msg) msg.textContent = "追記内容を入力してください";
-    return;
-  }
-  try {
-    await addClarification({ eventId: currentEvent().id, text, by }, key);
-    document.getElementById("adminClarifyText").value = "";
-    await refresh();
-    if (msg) msg.textContent = "追加しました";
-  } catch (e) {
-    if (msg) msg.textContent = String(e?.message || e);
-  }
-}
-
-async function refresh() {
-  if (!ev) return;
-  ev = await getEventById(ev.id, auth.deviceId);
-  if (isRangeParent()) {
-    const children = Array.isArray(ev.children) ? ev.children : [];
-    activeEvent =
-      children.find((child) => child.id === activeEvent?.id) || children[0] || null;
-  } else {
-    activeEvent = ev;
-  }
-  renderMeta();
-  renderRangeOutcomes();
-  renderLadder();
-  updateResolvedBadge();
-  renderOrderbook();
-  renderRules();
-  await renderTrades();
-  await renderPositions();
-  await renderAdminPanel();
-}
-
-/* ================= Boot ================= */
-
-document.addEventListener("DOMContentLoaded", async () => {
-  auth = await initAuthAndRender();
-
-  renderMe({
-    name: auth?.name,
-    points: auth?.points,
-    pointsUnits: auth?.pointsUnits,
+  document.getElementById("tradeBuyTab")?.addEventListener("click", () => {
+    orderSide = "buy";
+    renderTradeCard();
   });
 
-  initUserMenu();
+  document.getElementById("tradeSellTab")?.addEventListener("click", () => {
+    orderSide = "sell";
+    renderTradeCard();
+  });
 
-  document.getElementById("backBtn")?.addEventListener("click", () =>
-    history.length > 1 ? history.back() : (location.href = "index.html")
-  );
+  document.getElementById("sideYesBtn")?.addEventListener("click", () => {
+    selectedSide = "YES";
+    renderTradeCard();
+  });
+
+  document.getElementById("sideNoBtn")?.addEventListener("click", () => {
+    selectedSide = "NO";
+    renderTradeCard();
+  });
+
+  document.querySelectorAll("[data-add]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const amountInput = document.getElementById("tradeAmount");
+      if (!amountInput) return;
+      const current = Number(amountInput.value || 0);
+      const delta = btn.dataset.add === "max" ? null : Number(btn.dataset.add || 0);
+      if (delta === null) {
+        amountInput.value = Math.max(1, Math.floor(auth?.points ?? 1)).toString();
+      } else {
+        amountInput.value = Math.max(1, Math.floor(current + delta)).toString();
+      }
+    });
+  });
+
+  document.getElementById("tradeSubmit")?.addEventListener("click", submitTrade);
+}
+
+async function init() {
+  try {
+    auth = await initAuthAndRender();
+    renderHeader();
+  } catch (error) {
+    showError("ログイン情報の取得に失敗しました。");
+  }
 
   const id = idFromQuery();
-  if (!id) return;
-
-  ev = await getEventById(id, auth.deviceId);
-  if (isRangeParent()) {
-    const children = Array.isArray(ev.children) ? ev.children : [];
-    activeEvent = children[0] || null;
+  if (isMockMode()) {
+    eventData = buildMockEvent();
   } else {
-    activeEvent = ev;
-  }
-  renderMeta();
-  renderRangeOutcomes();
-  renderLadder();
-  updateResolvedBadge();
-  renderOrderbook();
-  renderRules();
-
-  await renderMyOrders();
-  await renderTrades();
-  await renderPositions();
-  await renderAdminPanel();
-
-  document.getElementById("quickYesBtn")?.addEventListener("click", () => {
-    const target = currentEvent();
-    if (!target || target.status === "resolved" || target.status === "tradingClosed") return;
-    openSheet("YES", getCenterYesPct(), target);
-  });
-
-  document.getElementById("quickNoBtn")?.addEventListener("click", () => {
-    const target = currentEvent();
-    if (!target || target.status === "resolved" || target.status === "tradingClosed") return;
-    openSheet("NO", 100 - getCenterYesPct(), target);
-  });
-
-  // sheet close
-  overlayEl()?.addEventListener("click", () => showSheet(false));
-  document.getElementById("sheetClose")?.addEventListener("click", () => showSheet(false));
-
-  // bet input wiring
-  betInputEl()?.addEventListener("input", () => setBetPoints(betInputEl().value));
-
-  document.getElementById("orderBuyBtn")?.addEventListener("click", () => setOrderSide("buy"));
-  document.getElementById("orderSellBtn")?.addEventListener("click", () => setOrderSide("sell"));
-
-  document.getElementById("plusBtn")?.addEventListener("click", () => setBetPoints(sheetBetPoints + 1));
-  document.getElementById("minusBtn")?.addEventListener("click", () => setBetPoints(Math.max(0, sheetBetPoints - 1)));
-
-  document.querySelectorAll(".quickBtn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const add = Number(btn.dataset.add || 0);
-      setBetPoints(sheetBetPoints + add);
-    });
-  });
-
-  document.getElementById("maxBtn")?.addEventListener("click", () => {
-    setBetPoints(Math.max(0, Number(me?.points || 0)));
-  });
-
-  document.getElementById("adminResolveBtn")?.addEventListener("click", async () => {
-    await handleAdminResolve();
-  });
-  document.getElementById("adminClarifyBtn")?.addEventListener("click", async () => {
-    await handleAdminClarify();
-  });
-  document.getElementById("adminLogoutBtn")?.addEventListener("click", () => {
-    localStorage.removeItem(LS_ADMIN_KEY);
-    adminKeyState = { key: "", ok: false, checked: false };
-    void renderAdminPanel();
-  });
-  document.getElementById("adminRefreshBtn")?.addEventListener("click", async () => {
-    await refresh();
-  });
-  document.getElementById("adminKeySaveBtn")?.addEventListener("click", async () => {
-    setAdminGateMsg("");
-    const input = document.getElementById("adminKeyEntry");
-    const raw = input?.value?.trim();
-    if (!raw) {
-      setAdminGateMsg("管理者コードを入力してください");
+    if (!id) {
+      showError("イベントIDが見つかりません。");
       return;
     }
-    const ok = await verifyAdminKey(raw);
-    if (!ok) {
-      setAdminGateMsg("管理者コードが正しくありません");
-      return;
-    }
-    localStorage.setItem(LS_ADMIN_KEY, raw);
-    adminKeyState = { key: raw, ok: true, checked: true };
-    if (input) input.value = "";
-    await renderAdminPanel();
-  });
-  const deleteBtn = document.getElementById("adminDeleteEventBtn");
-  if (deleteBtn) {
-    deleteBtn.disabled = true;
-    deleteBtn.title = "未実装";
-    deleteBtn.classList.add("opacity-60", "cursor-not-allowed");
-  }
 
-  // trade
-  document.getElementById("tradeBtn")?.addEventListener("click", async () => {
-    setSheetMsg("");
     try {
-      const target = currentEvent();
-      if (!target) throw new Error("レンジを選択してください");
-      if (target.status === "resolved" || target.status === "canceled" || target.status === "tradingClosed")
-        throw new Error("確定済みです");
-      if (!selectedOutcome) throw new Error("YES/NO を選んでください");
-
-      const priceBps = sheetPricePct * 100;
-      let qty = 0;
-      if (orderSide === "buy") {
-        const points = sheetBetPoints;
-        qty = Math.floor((points * UNIT_SCALE) / priceBps);
-        if (qty <= 0) throw new Error("ポイントが少なすぎます（qty=0）");
-      } else {
-        qty = Math.floor(sheetBetPoints);
-        if (qty <= 0) throw new Error("売却株数を入力してください");
-      }
-
-      const out = await placeOrder({
-        eventId: target.id,
-        deviceId: auth.deviceId,
-        name: me?.name || auth?.name || "Guest",
-        outcome: selectedOutcome,
-        side: orderSide,
-        priceBps,
-        qty,
-      });
-
-      if (out?.balanceUnits) {
-        renderMe({ name: me?.name, pointsUnits: out.balanceUnits.available });
-      }
-
-      await refresh();
-      await renderMyOrders();
-      showSheet(false);
-
-      const topMsg = document.getElementById("msg");
-      if (topMsg) {
-        topMsg.textContent =
-          out?.filled > 0
-            ? `注文しました（約定: ${out.filled} / 残り: ${out.remaining}）`
-            : "注文しました（未約定）";
-        setTimeout(() => (topMsg.textContent = ""), 2000);
-      }
-    } catch (e) {
-      setSheetMsg(String(e?.message || e));
+      eventData = await getEventById(id, auth?.deviceId);
+    } catch (error) {
+      showError(error?.message || "イベントの取得に失敗しました。");
+      return;
     }
-  });
+  }
+
+  outcomes = normalizeOutcomes(eventData);
+  selectedOutcome = outcomes[0] || null;
+  renderMeta();
+  renderChart();
+  renderOutcomeRows();
+  renderTradeCard();
+  bindUI();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  void init();
 });
