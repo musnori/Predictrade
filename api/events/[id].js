@@ -1,10 +1,29 @@
-// api/events/[id].js (PM v2)
+// api/events/[id].js (PM v2) ✅ FULL
 import { kv } from "@vercel/kv";
 import { getEvent, k, PRICE_SCALE, bpsToProb } from "../_kv.js";
 
 function toNum(v, fb = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fb;
+}
+function clampBps(v) {
+  const n = Math.round(toNum(v, PRICE_SCALE / 2));
+  return Math.max(0, Math.min(PRICE_SCALE, n));
+}
+
+async function getLastYesPriceBps(eventId) {
+  try {
+    const tradeIds = await kv.lrange(k.tradesByEvent(eventId), -1, -1);
+    const lastId = Array.isArray(tradeIds) ? tradeIds[0] : null;
+    if (!lastId) return PRICE_SCALE / 2;
+
+    const t = await kv.get(k.trade(eventId, lastId));
+    if (!t || typeof t !== "object") return PRICE_SCALE / 2;
+
+    return clampBps(t.yesPriceBps);
+  } catch {
+    return PRICE_SCALE / 2;
+  }
 }
 
 export default async function handler(req, res) {
@@ -28,24 +47,41 @@ export default async function handler(req, res) {
       if (!o || typeof o !== "object") continue;
       if (o.status !== "open") continue;
 
-      const rem = toNum(o.remaining);
+      const rem = toNum(o.remaining, 0);
       if (rem <= 0) continue;
 
       openOrders++;
 
-      const pb = toNum(o.priceBps);
-      if (String(o.outcome).toUpperCase() === "YES") yesBest = yesBest == null ? pb : Math.max(yesBest, pb);
-      if (String(o.outcome).toUpperCase() === "NO") noBest = noBest == null ? pb : Math.max(noBest, pb);
+      const pb = clampBps(o.priceBps);
+      const oc = String(o.outcome || "").toUpperCase();
+      if (oc === "YES") yesBest = yesBest == null ? pb : Math.max(yesBest, pb);
+      if (oc === "NO") noBest = noBest == null ? pb : Math.max(noBest, pb);
     }
 
-    const yesBps = yesBest == null ? PRICE_SCALE / 2 : yesBest;
-    const noBps = noBest == null ? PRICE_SCALE / 2 : noBest;
+    // fallback: last trade anchor
+    const lastYes = await getLastYesPriceBps(eventId);
+
+    let yesBps = yesBest;
+    let noBps = noBest;
+
+    if (yesBps == null && noBps == null) {
+      yesBps = lastYes;
+      noBps = PRICE_SCALE - lastYes;
+    } else {
+      if (yesBps == null) yesBps = lastYes;
+      if (noBps == null) noBps = PRICE_SCALE - lastYes;
+    }
+
+    yesBps = clampBps(yesBps);
+    noBps = clampBps(noBps);
 
     return res.status(200).json({
       ...ev,
       prices: {
         yes: bpsToProb(yesBps),
         no: bpsToProb(noBps),
+        yesBps,
+        noBps,
       },
       bestBidsBps: { yes: yesBps, no: noBps },
       stats: { ...(ev.stats || {}), openOrders },
