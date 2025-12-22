@@ -1,3 +1,5 @@
+ // src/main.js
+
 import { initAuthAndRender } from "./auth.js";
 import { getEvents, getCategoryName, timeRemaining } from "./storage.js";
 import { initUserMenu } from "./userMenu.js";

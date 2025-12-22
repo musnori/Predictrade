@@ -63,6 +63,32 @@
           <input id="endDate" type="datetime-local" class="form-input w-full px-4 py-3 rounded-lg text-slate-100" required />
         </div>
 
+        <div class="mt-4">
+  <label class="flex items-center gap-2 text-slate-200">
+    <input id="enableRanges" type="checkbox" class="scale-110" />
+    レンジ市場（Between）を作る
+  </label>
+  <p class="text-xs text-slate-400 mt-1">
+    例：4000〜5000、step=100 → 4000-4100 / 4100-4200 … を自動生成
+  </p>
+
+  <div id="rangesBox" class="hidden mt-3 grid grid-cols-3 gap-2">
+    <div>
+      <label class="block text-xs text-slate-400 mb-1">start</label>
+      <input id="rangeStart" type="number" value="4000" class="form-input w-full px-4 py-3 rounded-lg text-slate-100" />
+    </div>
+    <div>
+      <label class="block text-xs text-slate-400 mb-1">end</label>
+      <input id="rangeEnd" type="number" value="5000" class="form-input w-full px-4 py-3 rounded-lg text-slate-100" />
+    </div>
+    <div>
+      <label class="block text-xs text-slate-400 mb-1">step</label>
+      <input id="rangeStep" type="number" value="100" class="form-input w-full px-4 py-3 rounded-lg text-slate-100" />
+    </div>
+  </div>
+</div>
+
+
         <div>
           <label class="block text-sm text-slate-300 mb-2">流動性パラメータ b（大きいほど価格が動きにくい）</label>
           <input id="liquidityB" type="number" class="form-input w-full px-4 py-3 rounded-lg text-slate-100" value="50" min="1" required />

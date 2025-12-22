@@ -135,46 +135,112 @@ export default async function handler(req, res) {
       return res.status(200).json(events);
     }
 
-    // -------- POST create (admin only) --------
-    if (req.method === "POST") {
-      if (!isAdminRequest(req))
-        return res.status(401).send("admin only (set ADMIN_KEY)");
+// -------- POST create (admin only) --------
+if (req.method === "POST") {
+  if (!isAdminRequest(req))
+    return res.status(401).send("admin only (set ADMIN_KEY)");
 
-      const { title, description, category, endDate } = req.body || {};
+  const { title, description, category, endDate, ranges } = req.body || {};
 
-      const t = sanitizeText(title, 80);
-      const d = sanitizeText(description, 400);
-      const c = sanitizeText(category, 30);
+  const t = sanitizeText(title, 80);
+  const d = sanitizeText(description, 400);
+  const c = sanitizeText(category, 30);
 
-      if (!t || !d || !c || !endDate)
-        return res.status(400).send("missing fields");
+  if (!t || !d || !c || !endDate)
+    return res.status(400).send("missing fields");
 
-      const end = new Date(endDate).getTime();
-      if (!Number.isFinite(end)) return res.status(400).send("invalid endDate");
+  const end = new Date(endDate).getTime();
+  if (!Number.isFinite(end)) return res.status(400).send("invalid endDate");
 
-      const eventId = genId("evt");
+  // ---------- helper ----------
+  const makeBase = (id) => ({
+    id,
+    title: "",
+    description: "",
+    category: c,
+    status: "active",
+    createdAt: nowISO(),
+    endDate: new Date(end).toISOString(),
+    outcomes: ["YES", "NO"],
+    prices: { yesBps: 5000, noBps: 5000 },
+    stats: { trades: 0, openOrders: 0 },
+    resolvedAt: null,
+    result: null,
+  });
 
-      const ev = {
-        id: eventId,
-        title: t,
-        description: d,
-        category: c,
-        status: "active",
-        createdAt: nowISO(),
-        endDate: new Date(end).toISOString(),
+  // ---------- range market ----------
+  if (ranges && typeof ranges === "object") {
+    const start = Number(ranges.start);
+    const endV = Number(ranges.end);
+    const step = Number(ranges.step);
 
-        outcomes: ["YES", "NO"],
-        prices: { yesBps: 5000, noBps: 5000 },
+    if (![start, endV, step].every((x) => Number.isFinite(x)))
+      return res.status(400).send("invalid ranges (start/end/step)");
 
-        stats: { trades: 0, openOrders: 0 },
+    if (step <= 0) return res.status(400).send("step must be > 0");
+    if (endV <= start) return res.status(400).send("end must be > start");
 
-        resolvedAt: null,
-        result: null,
+    // 親イベント
+    const parentId = genId("evt");
+    const parent = {
+      ...makeBase(parentId),
+      title: t,
+      description: d,
+      type: "range_parent",
+      rangeMeta: { start, end: endV, step },
+    };
+
+    await putEvent(parent);
+
+    // 子イベント生成
+    const children = [];
+    for (let lo = start; lo < endV; lo += step) {
+      const hi = lo + step;
+      if (hi > endV) break;
+
+      const childId = genId("evt");
+      const childTitle = `${t}（${lo}〜${hi}）`;
+      const childDesc =
+        `${d}\n\n判定：${lo}以上${hi}未満なら「YES」、それ以外は「NO」。`;
+
+      const child = {
+        ...makeBase(childId),
+        title: sanitizeText(childTitle, 80),
+        description: sanitizeText(childDesc, 400),
+        type: "range_child",
+        parentId,
+        range: { lo, hi },
       };
 
-      await putEvent(ev);
-      return res.status(200).json(ev);
+      await putEvent(child);
+      children.push(childId);
     }
+
+    // 親に子ID一覧を持たせておく（後で親ページを作る時に便利）
+    parent.children = children;
+    await putEvent(parent);
+
+    return res.status(200).json({
+      ok: true,
+      mode: "range",
+      parent,
+      children,
+    });
+  }
+
+  // ---------- normal (single) ----------
+  const eventId = genId("evt");
+  const ev = {
+    ...makeBase(eventId),
+    title: t,
+    description: d,
+    type: "single",
+  };
+
+  await putEvent(ev);
+  return res.status(200).json({ ok: true, mode: "single", event: ev });
+}
+
 
     return res.status(405).send("Method Not Allowed");
   } catch (e) {
