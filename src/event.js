@@ -13,6 +13,7 @@ import {
 let auth;
 let me = null;
 let ev;
+let activeEvent = null;
 
 let selectedOutcome = null; // "YES" | "NO"
 let sheetPricePct = 50; // 1..99
@@ -23,6 +24,14 @@ const UNIT_SCALE = 10000;
 
 function idFromQuery() {
   return new URLSearchParams(location.search).get("id");
+}
+
+function currentEvent() {
+  return activeEvent || ev;
+}
+
+function isRangeParent() {
+  return ev?.type === "range_parent";
 }
 
 function unitsToPoints(units) {
@@ -98,17 +107,100 @@ function updateResolvedBadge() {
   }
 }
 
+/* ================= Range Outcomes ================= */
+
+function formatRangeLabel(child) {
+  const lo = child?.range?.lo;
+  const hi = child?.range?.hi;
+  if (Number.isFinite(lo) && Number.isFinite(hi)) {
+    return `${lo}〜${hi}`;
+  }
+  return child?.title ?? "-";
+}
+
+function setActiveEvent(nextEvent) {
+  activeEvent = nextEvent || null;
+  renderRangeOutcomes();
+  renderLadder();
+  void renderMyOrders();
+}
+
+function renderRangeOutcomes() {
+  const wrap = document.getElementById("rangeOutcomes");
+  const rows = document.getElementById("rangeRows");
+  if (!wrap || !rows) return;
+
+  if (!isRangeParent()) {
+    wrap.classList.add("hidden");
+    rows.innerHTML = "";
+    return;
+  }
+
+  const children = Array.isArray(ev?.children) ? ev.children : [];
+  if (children.length === 0) {
+    wrap.classList.add("hidden");
+    rows.innerHTML = "";
+    return;
+  }
+
+  wrap.classList.remove("hidden");
+  rows.innerHTML = "";
+
+  children.forEach((child) => {
+    const yesPct = clampPct(Math.round(Number(child?.prices?.yes ?? 0.5) * 100));
+    const noPct = 100 - yesPct;
+    const selected = activeEvent?.id === child.id;
+
+    const row = document.createElement("div");
+    row.className =
+      "range-row grid grid-cols-[1fr_auto_auto] gap-3 items-center px-6 py-4 opt" +
+      (selected ? " selected" : "");
+
+    row.innerHTML = `
+      <div>
+        <div class="font-semibold text-slate-200">${formatRangeLabel(child)}</div>
+        <div class="text-xs text-slate-400">${child?.stats?.trades ?? 0} trades</div>
+      </div>
+      <button class="buyYes px-3 py-2 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-600/30 text-emerald-200 text-sm">
+        Yes ${yesPct}%
+      </button>
+      <button class="buyNo px-3 py-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/25 text-sky-100 text-sm">
+        No ${noPct}%
+      </button>
+    `;
+
+    row.addEventListener("click", () => setActiveEvent(child));
+
+    row.querySelector(".buyYes")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (child.status === "resolved") return;
+      setActiveEvent(child);
+      openSheet("YES", yesPct, child);
+    });
+
+    row.querySelector(".buyNo")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (child.status === "resolved") return;
+      setActiveEvent(child);
+      openSheet("NO", noPct, child);
+    });
+
+    rows.appendChild(row);
+  });
+}
+
 /* ================= Ladder ================= */
 
 function getTickBps() {
-  const v = Number(ev?.market?.tickBps ?? 100);
+  const v = Number(currentEvent()?.market?.tickBps ?? 100);
   return Number.isFinite(v) && v > 0 ? v : 100;
 }
 function getCenterYesPct() {
   // v2なら ev.market.initialPriceBps、なければ ev.prices.yes、なければ50
+  const target = currentEvent();
   const bps =
-    Number(ev?.market?.initialPriceBps) ||
-    Math.round(Number(ev?.prices?.yes ?? 0.5) * 10000) ||
+    Number(target?.market?.initialPriceBps) ||
+    Math.round(Number(target?.prices?.yes ?? 0.5) * 10000) ||
     5000;
   const pct = Math.round(bps / 100);
   return clampPct(pct);
@@ -128,6 +220,12 @@ function buildLadderYesPcts(centerPct, tickBps, rows = 13) {
 function renderLadder() {
   const rowsEl = document.getElementById("ladderRows");
   if (!rowsEl) return;
+  const target = currentEvent();
+  if (!target) {
+    rowsEl.innerHTML = "";
+    updateMarketSnapshot(50);
+    return;
+  }
 
   const center = getCenterYesPct();
   const tickBps = getTickBps();
@@ -158,14 +256,14 @@ function renderLadder() {
     `;
 
     row.querySelector(".buyYes")?.addEventListener("click", () => {
-      if (ev.status === "resolved") return;
-      openSheet("YES", yesPct);
+      if (target.status === "resolved") return;
+      openSheet("YES", yesPct, target);
     });
 
     row.querySelector(".buyNo")?.addEventListener("click", () => {
-      if (ev.status === "resolved") return;
+      if (target.status === "resolved") return;
       // NOの価格は (100 - YES価格)
-      openSheet("NO", noPct);
+      openSheet("NO", noPct, target);
     });
 
     rowsEl.appendChild(row);
@@ -250,12 +348,14 @@ function computeDerived() {
   }
 }
 
-function openSheet(outcome, pricePct) {
+function openSheet(outcome, pricePct, targetEvent = currentEvent()) {
+  const target = targetEvent || currentEvent();
+  activeEvent = target || null;
   selectedOutcome = outcome;
   setSheetMsg("");
 
   // ヘッダ表示
-  if (sheetOptionTextEl()) sheetOptionTextEl().textContent = ev?.title ?? "-";
+  if (sheetOptionTextEl()) sheetOptionTextEl().textContent = target?.title ?? ev?.title ?? "-";
   if (sheetSideLabelEl()) sheetSideLabelEl().textContent = outcome === "YES" ? "Yes" : "No";
 
   setSheetPricePct(pricePct);
@@ -270,7 +370,14 @@ async function renderMyOrders() {
   const wrap = document.getElementById("myOrders");
   if (!wrap) return; // event.htmlに無ければ何もしない
 
-  const data = await getMyOpenOrders(ev.id, auth.deviceId);
+  const target = currentEvent();
+  if (!target) {
+    wrap.innerHTML = `<div class="text-sm font-semibold">My orders</div>
+      <div class="mt-3 text-slate-400 text-sm">レンジを選択してください</div>`;
+    return;
+  }
+
+  const data = await getMyOpenOrders(target.id, auth.deviceId);
   const orders = data?.orders || [];
 
   wrap.innerHTML = `<div class="text-sm font-semibold">My orders</div>`;
@@ -300,12 +407,12 @@ async function renderMyOrders() {
 
     row.querySelector("button").onclick = async () => {
       if (!confirm(`注文をキャンセルしますか？（残り ${o.remaining}）`)) return;
-      const out = await cancelOrder(ev.id, o.id, auth.deviceId);
+      const out = await cancelOrder(target.id, o.id, auth.deviceId);
 
       if (out?.balanceUnits) {
         renderMe({ name: me?.name, pointsUnits: out.balanceUnits.available });
       }
-      ev = out.event || ev;
+      activeEvent = out.event || target;
       await refresh();
       await renderMyOrders();
     };
@@ -317,8 +424,17 @@ async function renderMyOrders() {
 }
 
 async function refresh() {
+  if (!ev) return;
   ev = await getEventById(ev.id);
+  if (isRangeParent()) {
+    const children = Array.isArray(ev.children) ? ev.children : [];
+    activeEvent =
+      children.find((child) => child.id === activeEvent?.id) || children[0] || null;
+  } else {
+    activeEvent = ev;
+  }
   renderMeta();
+  renderRangeOutcomes();
   renderLadder();
   updateResolvedBadge();
 }
@@ -344,20 +460,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!id) return;
 
   ev = await getEventById(id);
+  if (isRangeParent()) {
+    const children = Array.isArray(ev.children) ? ev.children : [];
+    activeEvent = children[0] || null;
+  } else {
+    activeEvent = ev;
+  }
   renderMeta();
+  renderRangeOutcomes();
   renderLadder();
   updateResolvedBadge();
 
   await renderMyOrders();
 
   document.getElementById("quickYesBtn")?.addEventListener("click", () => {
-    if (ev.status === "resolved") return;
-    openSheet("YES", getCenterYesPct());
+    const target = currentEvent();
+    if (!target || target.status === "resolved") return;
+    openSheet("YES", getCenterYesPct(), target);
   });
 
   document.getElementById("quickNoBtn")?.addEventListener("click", () => {
-    if (ev.status === "resolved") return;
-    openSheet("NO", 100 - getCenterYesPct());
+    const target = currentEvent();
+    if (!target || target.status === "resolved") return;
+    openSheet("NO", 100 - getCenterYesPct(), target);
   });
 
   // sheet close
@@ -385,7 +510,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("tradeBtn")?.addEventListener("click", async () => {
     setSheetMsg("");
     try {
-      if (ev.status === "resolved") throw new Error("確定済みです");
+      const target = currentEvent();
+      if (!target) throw new Error("レンジを選択してください");
+      if (target.status === "resolved") throw new Error("確定済みです");
       if (!selectedOutcome) throw new Error("YES/NO を選んでください");
 
       const priceBps = sheetPricePct * 100;
@@ -396,7 +523,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (qty <= 0) throw new Error("ポイントが少なすぎます（qty=0）");
 
       const out = await placeOrder({
-        eventId: ev.id,
+        eventId: target.id,
         deviceId: auth.deviceId,
         name: me?.name || auth?.name || "Guest",
         outcome: selectedOutcome,

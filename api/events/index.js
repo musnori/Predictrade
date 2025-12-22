@@ -76,6 +76,7 @@ export default async function handler(req, res) {
       for (const id of ids) {
         const ev = await getEvent(id);
         if (!ev) continue;
+        if (ev.type === "range_child") continue;
 
         const { yesBest, noBest, openOrders } = await getBestBidsBps(id);
 
