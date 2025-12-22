@@ -1,4 +1,4 @@
-// src/auth.js (PM v2 - units balance)
+// src/auth.js (PM v2 - units balance)  ✅ FULL
 const LS_DEVICE = "predictrade.deviceId.v1";
 const LS_NAME = "predictrade.name.v1";
 
@@ -28,7 +28,7 @@ async function upsertUserOnServer(deviceId, name) {
     body: JSON.stringify({ deviceId, name }),
   });
   if (!res.ok) throw new Error(await res.text());
-  return res.json(); // { ok, user, balanceUnits? }
+  return res.json(); // { ok, user, balanceUnits }
 }
 
 function showNameModal() {
@@ -74,17 +74,33 @@ function showNameModal() {
   });
 }
 
-function renderHeader({ displayName, pointsUnits, pointsFallback }) {
+function renderHeader({ displayName, availableUnits, pointsFallback }) {
   const pointsEl = document.getElementById("userPoints");
   const nameEl = document.getElementById("userName");
 
   const pt =
-    Number.isFinite(pointsUnits) && pointsUnits >= 0
-      ? unitsToPoints(pointsUnits)
+    Number.isFinite(availableUnits) && availableUnits >= 0
+      ? unitsToPoints(availableUnits)
       : Math.floor(Number(pointsFallback || 0));
 
   if (pointsEl) pointsEl.textContent = pt.toLocaleString();
   if (nameEl) nameEl.textContent = String(displayName || "");
+}
+
+function pickServerName(data, localName) {
+  return String(data?.user?.displayName ?? data?.user?.name ?? localName)
+    .trim()
+    .slice(0, 20);
+}
+
+function pickAvailableUnits(data) {
+  const v = Number(
+    data?.balanceUnits?.available ??
+      data?.user?.balanceUnits?.available ??
+      data?.user?.available ??
+      0
+  );
+  return Number.isFinite(v) ? v : null;
 }
 
 export async function initAuthAndRender() {
@@ -97,31 +113,31 @@ export async function initAuthAndRender() {
   }
 
   const data = await upsertUserOnServer(deviceId, name);
-
-  const serverName = String(data?.user?.displayName ?? data?.user?.name ?? name)
-    .trim()
-    .slice(0, 20);
+  const serverName = pickServerName(data, name);
 
   if (serverName && serverName !== name) {
     localStorage.setItem(LS_NAME, serverName);
     name = serverName;
   }
 
-  const availableUnits =
-    Number(data?.balanceUnits?.available ?? data?.user?.balanceUnits?.available);
+  const availableUnits = pickAvailableUnits(data);
 
   renderHeader({
     displayName: serverName,
-    pointsUnits: Number.isFinite(availableUnits) ? availableUnits : undefined,
+    availableUnits: availableUnits ?? undefined,
     pointsFallback: data?.user?.points,
   });
+
+  const balanceUnits = data?.balanceUnits && typeof data.balanceUnits === "object"
+    ? data.balanceUnits
+    : null;
 
   return {
     deviceId,
     name: serverName,
-    // UI側で使いやすいよう両方返す
-    pointsUnits: Number.isFinite(availableUnits) ? availableUnits : 0,
-    points: Number.isFinite(availableUnits) ? unitsToPoints(availableUnits) : Number(data?.user?.points || 0),
+    pointsUnits: availableUnits, // null になり得る（混在バグ検知用）
+    points: availableUnits != null ? unitsToPoints(availableUnits) : Number(data?.user?.points || 0),
+    balanceUnits, // ← ✅ これを返しておく（他画面で便利）
     user: data?.user,
   };
 }
@@ -133,18 +149,15 @@ export async function rename() {
   localStorage.setItem(LS_NAME, name);
 
   const data = await upsertUserOnServer(deviceId, name);
-  const serverName = String(data?.user?.displayName ?? data?.user?.name ?? name)
-    .trim()
-    .slice(0, 20);
+  const serverName = pickServerName(data, name);
 
   if (serverName && serverName !== name) localStorage.setItem(LS_NAME, serverName);
 
-  const availableUnits =
-    Number(data?.balanceUnits?.available ?? data?.user?.balanceUnits?.available);
+  const availableUnits = pickAvailableUnits(data);
 
   renderHeader({
     displayName: serverName,
-    pointsUnits: Number.isFinite(availableUnits) ? availableUnits : undefined,
+    availableUnits: availableUnits ?? undefined,
     pointsFallback: data?.user?.points,
   });
 
@@ -152,7 +165,6 @@ export async function rename() {
 }
 
 export function logout() {
-  // deviceIdは維持、名前だけ消して次回入力させる
   localStorage.removeItem(LS_NAME);
   location.reload();
 }
