@@ -13,29 +13,6 @@ function clampBps(v) {
   return Math.max(0, Math.min(PRICE_SCALE, n));
 }
 
-function formatRangeLabel(range) {
-  if (!range || range.lo == null || range.hi == null) return null;
-  const lo = Number(range.lo).toLocaleString("en-US");
-  const hi = Number(range.hi).toLocaleString("en-US");
-  return `$${lo}-$${hi}`;
-}
-
-function buildOutcomeFromChild(child) {
-  const yesBps = clampBps(child?.prices?.yesBps ?? 0);
-  const noBps = clampBps(child?.prices?.noBps ?? PRICE_SCALE - yesBps);
-  return {
-    id: child.id,
-    label: formatRangeLabel(child?.range) || child?.title || "-",
-    chanceBps: yesBps,
-    yesBps,
-    noBps,
-    volume: toNum(child?.stats?.trades, 0),
-    eventId: child.id,
-    status: child.status,
-    range: child.range ?? null,
-  };
-}
-
 async function computeMarketFor(eventId) {
   const orderbook = await computeOrderbook(eventId);
   const lastTrade = await getLastTrade(eventId);
@@ -151,26 +128,6 @@ export default async function handler(req, res) {
       children.sort((a, b) => toNum(a.rank, 0) - toNum(b.rank, 0));
     }
 
-    const outcomes = Array.isArray(ev.outcomes)
-      ? ev.outcomes.map((outcome) => {
-          const yesBps = clampBps(outcome?.yesBps ?? outcome?.chanceBps ?? 0);
-          const noBps = clampBps(outcome?.noBps ?? PRICE_SCALE - yesBps);
-          return {
-            id: String(outcome?.id ?? outcome?.label ?? "outcome"),
-            label: outcome?.label ?? "-",
-            chanceBps: clampBps(outcome?.chanceBps ?? yesBps),
-            yesBps,
-            noBps,
-            volume: toNum(outcome?.volume, 0),
-            eventId: outcome?.eventId ?? ev.id,
-            status: outcome?.status ?? ev.status,
-            range: outcome?.range ?? null,
-          };
-        })
-      : ev.type === "range_parent"
-        ? children.map((child) => buildOutcomeFromChild(child))
-        : [];
-
     const endTime = new Date(ev.endDate).getTime();
     const status =
       ev.status === "active" && Number.isFinite(endTime) && Date.now() >= endTime
@@ -191,7 +148,6 @@ export default async function handler(req, res) {
       myOpenOrders,
       position,
       children,
-      outcomes,
     });
   } catch (e) {
     console.error("events/[id] pm2 error:", e);
