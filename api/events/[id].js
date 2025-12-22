@@ -1,6 +1,8 @@
 // api/events/[id].js (PM v2) ✅ FULL
 import { kv } from "@vercel/kv";
-import { getEvent, k, PRICE_SCALE, bpsToProb } from "../_kv.js";
+import { getEvent, k, PRICE_SCALE, bpsToProb, listChildEventIds } from "../_kv.js";
+
+
 
 function toNum(v, fb = 0) {
   const n = Number(v);
@@ -25,6 +27,62 @@ async function getLastYesPriceBps(eventId) {
     return PRICE_SCALE / 2;
   }
 }
+
+async function computeMarketFor(eventId) {
+  // compute best bids from open orders
+  const ids = await kv.smembers(k.ordersByEvent(eventId));
+  let yesBest = null;
+  let noBest = null;
+  let openOrders = 0;
+
+  for (const oid of Array.isArray(ids) ? ids : []) {
+    const o = await kv.get(k.order(eventId, oid));
+    if (!o || typeof o !== "object") continue;
+    if (o.status !== "open") continue;
+
+    const rem = toNum(o.remaining, 0);
+    if (rem <= 0) continue;
+
+    openOrders++;
+
+    const pb = clampBps(o.priceBps);
+    const oc = String(o.outcome || "").toUpperCase();
+    if (oc === "YES") yesBest = yesBest == null ? pb : Math.max(yesBest, pb);
+    if (oc === "NO") noBest = noBest == null ? pb : Math.max(noBest, pb);
+  }
+
+  // fallback: last trade anchor
+  const lastYes = await getLastYesPriceBps(eventId);
+
+  let yesBps = yesBest;
+  let noBps = noBest;
+
+  if (yesBps == null && noBps == null) {
+    yesBps = lastYes;
+    noBps = PRICE_SCALE - lastYes;
+  } else {
+    if (yesBps == null) yesBps = lastYes;
+    if (noBps == null) noBps = PRICE_SCALE - lastYes;
+  }
+
+  yesBps = clampBps(yesBps);
+  noBps = clampBps(noBps);
+
+  return {
+    prices: {
+      yes: bpsToProb(yesBps),
+      no: bpsToProb(noBps),
+      yesBps,
+      noBps,
+    },
+    bestBidsBps: { yes: yesBps, no: noBps },
+    openOrders,
+  };
+}
+
+
+
+
 
 export default async function handler(req, res) {
   try {
@@ -59,33 +117,40 @@ export default async function handler(req, res) {
     }
 
     // fallback: last trade anchor
-    const lastYes = await getLastYesPriceBps(eventId);
+    // ✅ 自分の市場情報
+const m = await computeMarket(eventId);
 
-    let yesBps = yesBest;
-    let noBps = noBest;
+// ✅ 親イベントなら children を集める
+let children = [];
+if (ev.type === "range_parent") {
+  const childIds = await kv.smembers(k.childrenByParent(eventId));
 
-    if (yesBps == null && noBps == null) {
-      yesBps = lastYes;
-      noBps = PRICE_SCALE - lastYes;
-    } else {
-      if (yesBps == null) yesBps = lastYes;
-      if (noBps == null) noBps = PRICE_SCALE - lastYes;
-    }
+  children = await Promise.all(
+    (Array.isArray(childIds) ? childIds : []).map(async (cid) => {
+      const cev = await getEvent(cid);
+      if (!cev) return null;
+      const cm = await computeMarket(cid);
+      return {
+        ...cev,
+        prices: cm.prices,
+        bestBidsBps: cm.bestBidsBps,
+        stats: { ...(cev.stats || {}), openOrders: cm.openOrders },
+      };
+    })
+  );
 
-    yesBps = clampBps(yesBps);
-    noBps = clampBps(noBps);
+  children = children.filter(Boolean);
+  children.sort((a, b) => toNum(a.rank, 0) - toNum(b.rank, 0));
+}
 
-    return res.status(200).json({
-      ...ev,
-      prices: {
-        yes: bpsToProb(yesBps),
-        no: bpsToProb(noBps),
-        yesBps,
-        noBps,
-      },
-      bestBidsBps: { yes: yesBps, no: noBps },
-      stats: { ...(ev.stats || {}), openOrders },
-    });
+return res.status(200).json({
+  ...ev,
+  prices: m.prices,
+  bestBidsBps: m.bestBidsBps,
+  stats: { ...(ev.stats || {}), openOrders: m.openOrders },
+  children, // ✅ ここが追加
+});
+
   } catch (e) {
     console.error("events/[id] pm2 error:", e);
     return res.status(500).send(`event read failed: ${e?.message || String(e)}`);

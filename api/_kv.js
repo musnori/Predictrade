@@ -35,6 +35,11 @@ export const k = {
 
   // locks
   lock: (name) => `${PMV2}:lock:${name}`,
+  
+  // range outcomes (parent -> children)
+  childrenByParent: (parentId) => `${PMV2}:idx:children:${parentId}`, // Set of child eventIds
+
+
 };
 
 // ---- helpers ----
@@ -211,15 +216,22 @@ export async function unlockCollateral(userId, amount) {
   });
 }
 
-// ---- events (minimal; details will be defined in api/events/*) ----
 export async function putEvent(event) {
   if (!event || typeof event !== "object") throw new Error("invalid_event");
   const eventId = event.id || genId("evt");
   const e = { ...event, id: eventId, updatedAt: nowISO() };
+
   await kv.set(k.event(eventId), e);
   await kv.sadd(k.idxEvents(), eventId);
+
+  // ✅ 親子関係のindex
+  if (e.parentId) {
+    await kv.sadd(k.childrenByParent(e.parentId), eventId);
+  }
+
   return e;
 }
+
 
 export async function getEvent(eventId) {
   if (!eventId) return null;
@@ -236,6 +248,12 @@ export async function listEventIds() {
   const ids = await kv.smembers(k.idxEvents());
   return Array.isArray(ids) ? ids : [];
 }
+
+export async function listChildEventIds(parentId) {
+  const ids = await kv.smembers(k.childrenByParent(parentId));
+  return Array.isArray(ids) ? ids : [];
+}
+
 
 /**
  * admin可視化用スナップショット（まずは index から辿る）

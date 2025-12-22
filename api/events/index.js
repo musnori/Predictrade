@@ -97,6 +97,8 @@ export default async function handler(req, res) {
         yesBps = clampBps(yesBps);
         noBps = clampBps(noBps);
 
+        
+
         events.push({
           id: ev.id,
           title: ev.title,
