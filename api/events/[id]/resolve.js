@@ -1,87 +1,118 @@
-// api/events/[id]/resolve.js
-import { loadStore, saveStore, ensureUser, isAdminRequest, nowISO } from "../../_kv.js";
+// api/events/[id]/resolve.js (PM v2)
+import { kv } from "@vercel/kv";
+import { isAdminRequest, withLock, getEvent, putEvent, listUserIds, k, nowISO, PRICE_SCALE } from "../../_kv.js";
 
-function calcParticipantCount(ev) {
-  const holdings = ev.holdings && typeof ev.holdings === "object" ? ev.holdings : {};
-  return Object.entries(holdings).filter(([_, pos]) => {
-    if (!pos || typeof pos !== "object") return false;
-    return Object.values(pos).some((v) => Number(v || 0) > 0);
-  }).length;
+const PMV2_PREFIX = "predictrade:pm:v2";
+const UNIT_SCALE = PRICE_SCALE; // 10000
+
+function assertResult(v) {
+  const x = String(v || "").toUpperCase();
+  if (x !== "YES" && x !== "NO") throw new Error("result must be YES or NO");
+  return x;
 }
 
-function calcPoolPoints(ev) {
-  const trades = Array.isArray(ev.trades) ? ev.trades : [];
-  return trades.reduce((a, t) => a + Number(t?.cost || 0), 0);
+function toNum(v, fb = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fb;
+}
+
+async function getPos(eventId, userId) {
+  const p = await kv.get(k.position(eventId, userId));
+  const obj = p && typeof p === "object" ? p : { yesQty: 0, noQty: 0 };
+  return { yesQty: toNum(obj.yesQty), noQty: toNum(obj.noQty) };
+}
+
+async function getBal(userId) {
+  const b = await kv.get(k.balance(userId));
+  const obj = b && typeof b === "object" ? b : { available: 0, locked: 0 };
+  return { available: toNum(obj.available), locked: toNum(obj.locked) };
+}
+
+async function setBal(userId, available, locked) {
+  const a = toNum(available);
+  const l = toNum(locked);
+  if (a < 0 || l < 0) throw new Error("negative_balance");
+  await kv.set(k.balance(userId), { available: a, locked: l, updatedAt: nowISO() });
+  return { available: a, locked: l };
+}
+
+async function addAvailable(userId, units) {
+  const u = toNum(units);
+  return await withLock(`bal:${userId}`, async () => {
+    const cur = await getBal(userId);
+    return await setBal(userId, cur.available + u, cur.locked);
+  });
 }
 
 export default async function handler(req, res) {
   try {
     if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
-
-    // 管理者認証（?key= でも x-admin-key でもOK）
     if (!isAdminRequest(req)) return res.status(401).send("Unauthorized");
 
-    const store = await loadStore();
-    const eventId = Number(req.query.id);
-    const ev = (store.events || []).find((e) => Number(e.id) === eventId);
-    if (!ev) return res.status(404).send("event not found");
-    if (ev.status === "resolved") return res.status(400).send("event already resolved");
+    const eventId = String(req.query.id || "").trim();
+    if (!eventId) return res.status(400).send("event id required");
 
-    const { resultOptionId } = req.body || {};
-    const winId = Number(resultOptionId);
-    if (!Number.isFinite(winId)) return res.status(400).send("resultOptionId required");
+    const win = assertResult(req.body?.result);
 
-    const exists = (ev.options || []).some((o) => Number(o.id) === winId);
-    if (!exists) return res.status(400).send("option not found");
+    const out = await withLock(`evt:${eventId}`, async () => {
+      const ev = await getEvent(eventId);
+      if (!ev) throw new Error("event not found");
+      if (ev.status === "resolved") throw new Error("event already resolved");
 
-    // holdings: deviceId -> { [optionId]: shares }
-    ev.holdings = ev.holdings && typeof ev.holdings === "object" ? ev.holdings : {};
+      const collKey = `${PMV2_PREFIX}:coll:${eventId}`;
+      const collBefore = toNum(await kv.get(collKey), 0);
 
-    const payouts = [];
-    let paidTotal = 0;
+      const userIds = await listUserIds();
+      const payouts = [];
+      let payTotal = 0;
 
-    for (const [deviceId, pos] of Object.entries(ev.holdings)) {
-      const shares = Number(pos?.[String(winId)] || 0);
-      if (!Number.isFinite(shares) || shares <= 0) continue;
+      for (const uid of userIds) {
+        const pos = await getPos(eventId, uid);
+        const winQty = win === "YES" ? pos.yesQty : pos.noQty;
+        if (!Number.isFinite(winQty) || winQty <= 0) continue;
 
-      const user = ensureUser(store, deviceId);
+        const units = Math.round(winQty * UNIT_SCALE);
+        await addAvailable(uid, units);
 
-      // ✅ 1 share = 1pt を支払い（勝ちのshares分だけ加算）
-      user.points = Number(user.points || 0) + shares;
+        payouts.push({ userId: uid, winQty, paidUnits: units });
+        payTotal += units;
+      }
 
-      payouts.push({
-        deviceId,
-        name: user.name ?? "Guest",
-        sharesWon: shares,
-        paid: shares,
+      if (collBefore < payTotal) {
+        throw new Error(`collateral_insufficient: have=${collBefore} need=${payTotal}`);
+      }
+      await kv.set(collKey, collBefore - payTotal);
+
+      const ev2 = await putEvent({
+        ...ev,
+        status: "resolved",
+        result: win,
+        resolvedAt: nowISO(),
+        payoutsSummary: { count: payouts.length, paidUnits: payTotal },
       });
-      paidTotal += shares;
-    }
 
-    ev.status = "resolved";
-    ev.resultOptionId = winId;
-    ev.resolvedAt = nowISO();
-
-    // 監査用ログ
-    ev.payouts = payouts;
-    ev.paidTotal = paidTotal;
-
-    // 表示用（一覧がズレないように）
-    ev.participantCount = calcParticipantCount(ev);
-    ev.participants = ev.participantCount;
-    ev.poolPoints = calcPoolPoints(ev);
-
-    await saveStore(store);
-
-    return res.status(200).json({
-      ok: true,
-      event: ev,
-      payouts,
-      paidTotal,
-      count: payouts.length,
+      return {
+        ok: true,
+        event: ev2,
+        payouts,
+        count: payouts.length,
+        paidUnits: payTotal,
+        collateralBefore: collBefore,
+        collateralAfter: collBefore - payTotal,
+      };
     });
+
+    return res.status(200).json(out);
   } catch (e) {
-    console.error("resolve error:", e);
-    return res.status(500).send(`resolve failed: ${e?.message || String(e)}`);
+    console.error("resolve(pm2) error:", e);
+    const msg = e?.message || String(e);
+    const code =
+      msg.includes("Unauthorized") ? 401 :
+      msg.includes("event not found") ? 404 :
+      msg.includes("already resolved") ? 400 :
+      msg.includes("result must") ? 400 :
+      msg.includes("collateral_insufficient") ? 409 :
+      500;
+    return res.status(code).send(msg);
   }
 }

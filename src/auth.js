@@ -1,6 +1,14 @@
-// src/auth.js
+// src/auth.js (PM v2 - units balance)
 const LS_DEVICE = "predictrade.deviceId.v1";
 const LS_NAME = "predictrade.name.v1";
+
+const UNIT_SCALE = 10000; // 10000 units = 1pt
+
+function unitsToPoints(units) {
+  const n = Number(units || 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.floor(n / UNIT_SCALE);
+}
 
 function getOrCreateDeviceId() {
   let id = localStorage.getItem(LS_DEVICE);
@@ -20,7 +28,7 @@ async function upsertUserOnServer(deviceId, name) {
     body: JSON.stringify({ deviceId, name }),
   });
   if (!res.ok) throw new Error(await res.text());
-  return res.json(); // { ok, user }
+  return res.json(); // { ok, user, balanceUnits? }
 }
 
 function showNameModal() {
@@ -32,7 +40,7 @@ function showNameModal() {
     overlay.innerHTML = `
       <div style="width:100%;max-width:420px;background:#0f172a;border:1px solid rgba(148,163,184,.25);border-radius:16px;padding:20px;color:#f1f5f9;">
         <div style="font-size:18px;font-weight:700;margin-bottom:8px;">ニックネームを入力してください</div>
-        <div style="font-size:13px;color:#94a3b8;margin-bottom:14px;">忘年会用：本名じゃなくてOK（例：たろう / 営業A / うさ）</div>
+        <div style="font-size:13px;color:#94a3b8;margin-bottom:14px;">本名じゃなくてOK（例：たろう / 営業A / うさ）</div>
         <input id="pt-name" maxlength="20"
           style="width:100%;padding:12px 12px;border-radius:12px;border:1px solid rgba(148,163,184,.3);background:#1e293b;color:#f1f5f9;outline:none;"
           placeholder="ニックネーム（20文字まで）" />
@@ -66,19 +74,22 @@ function showNameModal() {
   });
 }
 
-function renderHeader(user, fallbackName) {
+function renderHeader({ displayName, pointsUnits, pointsFallback }) {
   const pointsEl = document.getElementById("userPoints");
-  if (pointsEl) pointsEl.textContent = Math.floor(Number(user?.points || 0)).toLocaleString();
-
   const nameEl = document.getElementById("userName");
-  if (nameEl) nameEl.textContent = String(user?.name || fallbackName || "");
-}
 
+  const pt =
+    Number.isFinite(pointsUnits) && pointsUnits >= 0
+      ? unitsToPoints(pointsUnits)
+      : Math.floor(Number(pointsFallback || 0));
+
+  if (pointsEl) pointsEl.textContent = pt.toLocaleString();
+  if (nameEl) nameEl.textContent = String(displayName || "");
+}
 
 export async function initAuthAndRender() {
   const deviceId = getOrCreateDeviceId();
 
-  // ✅ 初回だけ入力（以後はlocalStorageから）
   let name = localStorage.getItem(LS_NAME);
   if (!name) {
     name = await showNameModal();
@@ -87,39 +98,61 @@ export async function initAuthAndRender() {
 
   const data = await upsertUserOnServer(deviceId, name);
 
-  // サーバが調整した名前を正にする（重複対応など）
-  const serverName = String(data?.user?.name ?? name).trim().slice(0, 20);
+  const serverName = String(data?.user?.displayName ?? data?.user?.name ?? name)
+    .trim()
+    .slice(0, 20);
+
   if (serverName && serverName !== name) {
     localStorage.setItem(LS_NAME, serverName);
     name = serverName;
   }
 
-  renderHeader(data?.user, name);
+  const availableUnits =
+    Number(data?.balanceUnits?.available ?? data?.user?.balanceUnits?.available);
+
+  renderHeader({
+    displayName: serverName,
+    pointsUnits: Number.isFinite(availableUnits) ? availableUnits : undefined,
+    pointsFallback: data?.user?.points,
+  });
 
   return {
     deviceId,
-    name,
-    points: Number(data?.user?.points || 0),
+    name: serverName,
+    // UI側で使いやすいよう両方返す
+    pointsUnits: Number.isFinite(availableUnits) ? availableUnits : 0,
+    points: Number.isFinite(availableUnits) ? unitsToPoints(availableUnits) : Number(data?.user?.points || 0),
     user: data?.user,
   };
 }
 
-// ✅ userMenu互換（任意だけど残しておくと便利）
+// userMenu互換（rename）
 export async function rename() {
   const deviceId = getOrCreateDeviceId();
   const name = await showNameModal();
   localStorage.setItem(LS_NAME, name);
 
   const data = await upsertUserOnServer(deviceId, name);
-  const serverName = String(data?.user?.name ?? name).trim().slice(0, 20);
+  const serverName = String(data?.user?.displayName ?? data?.user?.name ?? name)
+    .trim()
+    .slice(0, 20);
+
   if (serverName && serverName !== name) localStorage.setItem(LS_NAME, serverName);
 
-  renderHeader(data?.user, serverName);
+  const availableUnits =
+    Number(data?.balanceUnits?.available ?? data?.user?.balanceUnits?.available);
+
+  renderHeader({
+    displayName: serverName,
+    pointsUnits: Number.isFinite(availableUnits) ? availableUnits : undefined,
+    pointsFallback: data?.user?.points,
+  });
+
   return data?.user;
 }
 
 export function logout() {
-  // 各自スマホ：deviceIdは維持、名前だけ消して次回入力させる
+  // deviceIdは維持、名前だけ消して次回入力させる
   localStorage.removeItem(LS_NAME);
   location.reload();
 }

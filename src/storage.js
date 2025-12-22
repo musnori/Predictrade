@@ -1,3 +1,4 @@
+// src/storage.js (PM v2)
 async function api(path, opts) {
   const res = await fetch(path, opts);
   if (!res.ok) {
@@ -12,12 +13,18 @@ export async function getEvents() {
 }
 
 export async function getEventById(id) {
-  return api(`/api/events/${id}`);
+  return api(`/api/events/${encodeURIComponent(id)}`);
 }
 
+/**
+ * PM v2: イベント作成（YES/NO固定）
+ * payload: { title, description, category, endDate }
+ * adminKey: 任意（?key= 互換）
+ */
 export async function createEvent(payload, adminKey) {
-  // adminKeyはローカル用：?key= でもOKにしてる
-  const url = adminKey ? `/api/events?key=${encodeURIComponent(adminKey)}` : "/api/events";
+  const url = adminKey
+    ? `/api/events?key=${encodeURIComponent(adminKey)}`
+    : "/api/events";
   return api(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -25,30 +32,38 @@ export async function createEvent(payload, adminKey) {
   });
 }
 
-export async function addOption({ eventId, deviceId, text }) {
-  return api(`/api/events/${eventId}/addOption`, {
+/**
+ * PM v2: 注文（Phase1は buy のみ）
+ * body:
+ * {
+ *   deviceId,
+ *   name,
+ *   outcome: "YES"|"NO",
+ *   side: "buy",
+ *   priceBps: 0..10000,
+ *   qty: integer (>0)
+ * }
+ */
+export async function placeOrder({ eventId, ...body }) {
+  return api(`/api/events/${encodeURIComponent(eventId)}/predict`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ deviceId, text }),
+    body: JSON.stringify(body),
   });
 }
 
-export async function buyShares({ eventId, deviceId, optionId, shares }) {
-  return api(`/api/events/${eventId}/predict`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ deviceId, optionId, shares }),
-  });
-}
-
-export async function resolveEvent({ eventId, resultOptionId }, adminKey) {
+/**
+ * PM v2: マーケット確定（後で resolve API を差し替える前提）
+ * result: "YES" | "NO"
+ */
+export async function resolveEvent({ eventId, result }, adminKey) {
   const url = adminKey
-    ? `/api/events/${eventId}/resolve?key=${encodeURIComponent(adminKey)}`
-    : `/api/events/${eventId}/resolve`;
+    ? `/api/events/${encodeURIComponent(eventId)}/resolve?key=${encodeURIComponent(adminKey)}`
+    : `/api/events/${encodeURIComponent(eventId)}/resolve`;
   return api(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ resultOptionId }),
+    body: JSON.stringify({ result }),
   });
 }
 
@@ -77,28 +92,20 @@ export function timeRemaining(endDate) {
   return `${d}日`;
 }
 
-// ===== client-side LMSR (for cost estimate) =====
-export function lmsrPrices(qArr, b) {
-  const B = Number(b);
-  const xs = qArr.map((q) => Math.exp(Number(q || 0) / B));
-  const s = xs.reduce((a, v) => a + v, 0);
-  return xs.map((v) => (s <= 0 ? 0 : v / s));
-}
-
-export function lmsrCost(qArr, b) {
-  const B = Number(b);
-  const xs = qArr.map((q) => Math.exp(Number(q || 0) / B));
-  const s = xs.reduce((a, v) => a + v, 0);
-  return B * Math.log(s);
-}
-
-export function lmsrCostDelta(qArr, idx, dq, b) {
-  const before = lmsrCost(qArr, b);
-  const after = qArr.slice();
-  after[idx] = Number(after[idx] || 0) + Number(dq || 0);
-  return lmsrCost(after, b) - before;
-}
-
+// Phase2以降で PM v2 の履歴APIを作る（今は呼び出し側があるなら一旦残す）
 export async function getMyHistory(deviceId) {
   return api(`/api/users/${encodeURIComponent(deviceId)}?action=history`);
+}
+
+
+export async function getMyOpenOrders(eventId, deviceId) {
+  return api(`/api/events/${encodeURIComponent(eventId)}/orders?deviceId=${encodeURIComponent(deviceId)}`);
+}
+
+export async function cancelOrder(eventId, orderId, deviceId) {
+  return api(`/api/events/${encodeURIComponent(eventId)}/orders/${encodeURIComponent(orderId)}/cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ deviceId }),
+  });
 }
