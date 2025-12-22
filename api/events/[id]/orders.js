@@ -1,4 +1,4 @@
-// api/events/[id]/orders/index.js
+// api/events/[id]/orders.js
 import { kv } from "@vercel/kv";
 import { withLock, getEvent, k } from "../../../_kv.js";
 

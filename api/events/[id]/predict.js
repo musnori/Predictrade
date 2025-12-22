@@ -251,17 +251,24 @@ export default async function handler(req, res) {
 
         const newMakerRem = makerRem - fillQty;
 
-        // Update maker order state (and keep its lockedUnits as max; refund later when fully filled/closed)
         await closeOrder(eventId, maker.id, {
-          remaining: newMakerRem,
-          status: newMakerRem <= 0 ? "filled" : "open",
-        });
+  remaining: newMakerRem,
+  lockedUnits: newMakerRem <= 0
+    ? 0
+    : costUnits(Number(maker.priceBps), newMakerRem),
+  status: newMakerRem <= 0 ? "filled" : "open",
+});
 
-        // Update taker order state now (partial)
-        await closeOrder(eventId, orderId, {
-          remaining,
-          status: remaining <= 0 ? "filled" : "open",
-        });
+
+await closeOrder(eventId, orderId, {
+  remaining,
+  lockedUnits: remaining <= 0
+    ? 0
+    : costUnits(pBps, remaining), // takerは自分の指値 pBps
+  status: remaining <= 0 ? "filled" : "open",
+});
+
+
 
         // Mint positions:
         // taker gets outcome oc shares, maker gets opposite shares

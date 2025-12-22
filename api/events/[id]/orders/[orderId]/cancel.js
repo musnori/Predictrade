@@ -1,4 +1,4 @@
-// api/events/[id]/orders/[orderId]/cancel.js
+// api/events/[id]/orders/[orderId]/cancel.js  (PM v2)
 import { kv } from "@vercel/kv";
 import { withLock, getEvent, putEvent, k, nowISO, PRICE_SCALE } from "../../../../_kv.js";
 
@@ -50,30 +50,31 @@ export default async function handler(req, res) {
       const priceBps = toNum(ord.priceBps);
       if (priceBps < 0 || priceBps > PRICE_SCALE) throw new Error("invalid order price");
 
-      // 返金units（未約定分だけ）
-      const refundUnits = Math.round(remaining * priceBps);
+      // ✅ 返金は「orderに残っている lockedUnits」を信頼する（remaining*priceBpsの再計算はしない）
+      const refundUnits = Math.floor(toNum(ord.lockedUnits));
+      if (refundUnits <= 0) throw new Error("nothing_to_refund");
 
       // balance: locked -> available へ戻す
       const bal = await withLock(`bal:${deviceId}`, async () => {
         const cur = await getBal(deviceId);
         if (cur.locked < refundUnits) {
-          // ここが起きるなら、mint時のlocked消費/返金の整合が崩れてる
           throw new Error(`insufficient_locked: have=${cur.locked} need=${refundUnits}`);
         }
         return setBal(deviceId, cur.available + refundUnits, cur.locked - refundUnits);
       });
 
-      // order をキャンセルに
+      // order をキャンセルに（remaining=0, lockedUnits=0）
       const next = {
         ...ord,
         status: "cancelled",
         cancelledAt: nowISO(),
         remaining: 0,
+        lockedUnits: 0,
         updatedAt: nowISO(),
       };
       await kv.set(key, next);
 
-      // event stats 更新（openOrdersだけでも）
+      // event stats 更新（openOrders）
       const ids = await kv.smembers(k.ordersByEvent(eventId));
       let openOrders = 0;
       for (const oid of Array.isArray(ids) ? ids : []) {
@@ -100,6 +101,7 @@ export default async function handler(req, res) {
       msg.includes("already resolved") ? 400 :
       msg.includes("not open") ? 400 :
       msg.includes("nothing to cancel") ? 400 :
+      msg.includes("nothing_to_refund") ? 400 :
       msg.includes("insufficient_locked") ? 409 :
       500;
     return res.status(code).send(msg);
