@@ -9,8 +9,6 @@ import {
   getMyOpenOrders,
   cancelOrder,
   addClarification,
-  getEventTrades,
-  getEventPosition,
   resolveEvent,
 } from "./storage.js";
 
@@ -361,30 +359,22 @@ function renderRules() {
 async function renderTrades() {
   const listEl = document.getElementById("tradeRows");
   if (!listEl) return;
-  const target = currentEvent();
-  if (!target) return;
-
-  try {
-    const out = await getEventTrades(target.id, 20);
-    const trades = out?.trades || [];
-    if (!trades.length) {
-      listEl.innerHTML = `<div class="text-xs text-slate-500">まだ約定がありません</div>`;
-      return;
-    }
-    listEl.innerHTML = "";
-    trades.forEach((t) => {
-      const yesPct = Math.round(Number(t.yesPriceBps || 0) / 100);
-      const row = document.createElement("div");
-      row.className = "flex items-center justify-between text-xs bg-slate-900/40 border border-slate-800 rounded-lg px-3 py-2";
-      row.innerHTML = `
-        <div>${new Date(t.createdAt).toLocaleTimeString("ja-JP")} • ${t.kind || "-"}</div>
-        <div class="text-slate-300">${yesPct}% • ${t.qty} shares</div>
-      `;
-      listEl.appendChild(row);
-    });
-  } catch (e) {
-    listEl.innerHTML = `<div class="text-xs text-slate-500">取得に失敗しました</div>`;
+  const trades = Array.isArray(ev?.trades) ? ev.trades : [];
+  if (!trades.length) {
+    listEl.innerHTML = `<div class="text-xs text-slate-500">まだ約定がありません</div>`;
+    return;
   }
+  listEl.innerHTML = "";
+  trades.forEach((t) => {
+    const yesPct = Math.round(Number(t.yesPriceBps || 0) / 100);
+    const row = document.createElement("div");
+    row.className = "flex items-center justify-between text-xs bg-slate-900/40 border border-slate-800 rounded-lg px-3 py-2";
+    row.innerHTML = `
+      <div>${new Date(t.createdAt).toLocaleTimeString("ja-JP")} • ${t.kind || "-"}</div>
+      <div class="text-slate-300">${yesPct}% • ${t.qty} shares</div>
+    `;
+    listEl.appendChild(row);
+  });
 }
 
 async function renderPositions() {
@@ -394,17 +384,23 @@ async function renderPositions() {
   const target = currentEvent();
   if (!target || !posYes || !posNo || !posValue) return;
 
-  try {
-    const out = await getEventPosition(target.id, auth.deviceId);
-    posYes.textContent = Number(out?.position?.yesQty || 0).toLocaleString();
-    posNo.textContent = Number(out?.position?.noQty || 0).toLocaleString();
-    const val = Number(out?.estimatedValue || 0);
-    posValue.textContent = `${val.toFixed(2)} pt`;
-  } catch (e) {
+  const position = target?.position ?? ev?.position;
+  if (!position) {
     posYes.textContent = "-";
     posNo.textContent = "-";
     posValue.textContent = "-";
+    return;
   }
+
+  const yesQty = Number(position?.yesQty || 0);
+  const noQty = Number(position?.noQty || 0);
+  const yesPrice = Number(target?.prices?.yes ?? 0);
+  const noPrice = Number(target?.prices?.no ?? 0);
+  const val = yesQty * yesPrice + noQty * noPrice;
+
+  posYes.textContent = yesQty.toLocaleString();
+  posNo.textContent = noQty.toLocaleString();
+  posValue.textContent = `${val.toFixed(2)} pt`;
 }
 
 function updateMarketSnapshot() {
@@ -699,7 +695,7 @@ async function handleAdminClarify() {
 
 async function refresh() {
   if (!ev) return;
-  ev = await getEventById(ev.id);
+  ev = await getEventById(ev.id, auth.deviceId);
   if (isRangeParent()) {
     const children = Array.isArray(ev.children) ? ev.children : [];
     activeEvent =
@@ -738,7 +734,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const id = idFromQuery();
   if (!id) return;
 
-  ev = await getEventById(id);
+  ev = await getEventById(id, auth.deviceId);
   if (isRangeParent()) {
     const children = Array.isArray(ev.children) ? ev.children : [];
     activeEvent = children[0] || null;

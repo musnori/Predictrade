@@ -48,6 +48,7 @@ export default async function handler(req, res) {
 
     const eventId = String(req.query.id || "").trim();
     if (!eventId) return res.status(400).send("event id required");
+    const deviceId = String(req.query.deviceId || "").trim();
 
     const ev = await getEvent(eventId);
     if (!ev) return res.status(404).send("event not found");
@@ -55,6 +56,23 @@ export default async function handler(req, res) {
     // ✅ 自分の市場情報
     const m = await computeMarketFor(eventId);
     const rulesUpdates = await listRulesUpdates(eventId);
+    const tradeIds = await kv.lrange(k.tradesByEvent(eventId), -20, -1).catch(() => []);
+    const trades = [];
+    for (const tid of Array.isArray(tradeIds) ? tradeIds : []) {
+      const t = await kv.get(k.trade(eventId, tid));
+      if (t && typeof t === "object") trades.push(t);
+    }
+    trades.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+
+    let position = null;
+    if (deviceId) {
+      const p = await kv.get(k.position(eventId, deviceId));
+      const obj = p && typeof p === "object" ? p : { yesQty: 0, noQty: 0 };
+      position = {
+        yesQty: toNum(obj.yesQty, 0),
+        noQty: toNum(obj.noQty, 0),
+      };
+    }
 
     // ✅ 親イベントなら children を集める
     let children = [];
@@ -103,6 +121,8 @@ export default async function handler(req, res) {
       orderbook: m.orderbook,
       stats: { ...(ev.stats || {}), openOrders: m.openOrders },
       rulesUpdates,
+      trades,
+      position,
       children,
     });
   } catch (e) {
