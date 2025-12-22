@@ -111,10 +111,6 @@ export async function getMyHistory(deviceId) {
 }
 
 
-export async function getMyOpenOrders(eventId, deviceId) {
-  return api(`/api/events/${encodeURIComponent(eventId)}/orders?deviceId=${encodeURIComponent(deviceId)}`);
-}
-
 export async function cancelOrder(eventId, orderId, deviceId) {
   return api(`/api/events/${encodeURIComponent(eventId)}/orders/${encodeURIComponent(orderId)}/cancel`, {
     method: "POST",

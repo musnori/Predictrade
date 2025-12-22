@@ -64,8 +64,31 @@ export default async function handler(req, res) {
     }
     trades.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 
+    let myOpenOrders = null;
     let position = null;
     if (deviceId) {
+      const orderIds = await kv.smembers(k.ordersByEvent(eventId));
+      const orders = [];
+      for (const oid of Array.isArray(orderIds) ? orderIds : []) {
+        const o = await kv.get(k.order(eventId, oid));
+        if (!o || typeof o !== "object") continue;
+        if (o.status !== "open" || toNum(o.remaining, 0) <= 0) continue;
+        if (String(o.userId) !== deviceId) continue;
+        orders.push({
+          id: o.id,
+          userId: o.userId,
+          side: o.side,
+          outcome: o.outcome,
+          priceBps: Number(o.priceBps || 0),
+          qty: Number(o.qty || 0),
+          remaining: Number(o.remaining || 0),
+          lockedUnits: Number(o.lockedUnits || 0),
+          createdAt: o.createdAt,
+        });
+      }
+      orders.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+      myOpenOrders = orders;
+
       const p = await kv.get(k.position(eventId, deviceId));
       const obj = p && typeof p === "object" ? p : { yesQty: 0, noQty: 0 };
       position = {
@@ -122,6 +145,7 @@ export default async function handler(req, res) {
       stats: { ...(ev.stats || {}), openOrders: m.openOrders },
       rulesUpdates,
       trades,
+      myOpenOrders,
       position,
       children,
     });

@@ -6,7 +6,6 @@ import {
   getCategoryName,
   placeOrder,
   timeRemaining,
-  getMyOpenOrders,
   cancelOrder,
   addClarification,
   resolveEvent,
@@ -570,14 +569,7 @@ async function renderMyOrders() {
   }
 
   let orders = [];
-  try {
-    const data = await getMyOpenOrders(target.id, auth.deviceId);
-    orders = data?.orders || [];
-  } catch (error) {
-    wrap.innerHTML = `<div class="text-sm font-semibold">My orders</div>
-      <div class="mt-3 text-slate-400 text-sm">注文情報の取得に失敗しました</div>`;
-    return;
-  }
+  orders = Array.isArray(ev?.myOpenOrders) ? ev.myOpenOrders : [];
 
   wrap.innerHTML = `<div class="text-sm font-semibold">My orders</div>`;
   const list = document.createElement("div");
