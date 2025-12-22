@@ -1,4 +1,4 @@
-// api/events/index.js  (PM v2)
+// api/events/index.js (PM v2) ✅ FULL
 import {
   isAdminRequest,
   sanitizeText,
@@ -17,11 +17,40 @@ function toNumber(v, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-/**
- * Phase1の「現在価格（YES）」の決め方:
- * - tradesがあれば最後のmint tradeの yesPriceBps を採用
- * - なければ 0.5
- */
+function clampBps(p) {
+  const n = Math.round(toNumber(p, 5000));
+  return Math.max(0, Math.min(PRICE_SCALE, n));
+}
+
+// Phase1の「現在価格」優先順位:
+// 1) best bid (open orders)
+// 2) last mint trade
+// 3) 0.5
+async function getBestBidsBps(eventId) {
+  const ids = await kv.smembers(k.ordersByEvent(eventId));
+  let yesBest = null;
+  let noBest = null;
+  let openOrders = 0;
+
+  for (const oid of Array.isArray(ids) ? ids : []) {
+    const o = await kv.get(k.order(eventId, oid));
+    if (!o || typeof o !== "object") continue;
+    if (o.status !== "open") continue;
+
+    const rem = toNumber(o.remaining, 0);
+    if (rem <= 0) continue;
+
+    openOrders++;
+    const pb = clampBps(o.priceBps);
+    const oc = String(o.outcome || "").toUpperCase();
+
+    if (oc === "YES") yesBest = yesBest == null ? pb : Math.max(yesBest, pb);
+    if (oc === "NO") noBest = noBest == null ? pb : Math.max(noBest, pb);
+  }
+
+  return { yesBest, noBest, openOrders };
+}
+
 async function getLastYesPriceBps(eventId) {
   try {
     const tradeIds = await kv.lrange(k.tradesByEvent(eventId), -1, -1); // last 1
@@ -31,10 +60,7 @@ async function getLastYesPriceBps(eventId) {
     const t = await kv.get(k.trade(eventId, lastId));
     if (!t || typeof t !== "object") return 5000;
 
-    const p = toNumber(t.yesPriceBps, 5000);
-    if (p < 0) return 0;
-    if (p > PRICE_SCALE) return PRICE_SCALE;
-    return Math.round(p);
+    return clampBps(t.yesPriceBps);
   } catch {
     return 5000;
   }
@@ -51,10 +77,25 @@ export default async function handler(req, res) {
         const ev = await getEvent(id);
         if (!ev) continue;
 
-        const yesPriceBps =
-          typeof ev?.prices?.yesBps === "number"
-            ? ev.prices.yesBps
-            : await getLastYesPriceBps(id);
+        const { yesBest, noBest, openOrders } = await getBestBidsBps(id);
+
+        let yesBps = yesBest;
+        let noBps = noBest;
+
+        // fallback to last trade anchor
+        if (yesBps == null && noBps == null) {
+          const lastYes = await getLastYesPriceBps(id);
+          yesBps = lastYes;
+          noBps = PRICE_SCALE - lastYes;
+        } else {
+          // 片側しか板が無い時は、残りは last trade / 0.5 で補完
+          const lastYes = await getLastYesPriceBps(id);
+          if (yesBps == null) yesBps = lastYes;
+          if (noBps == null) noBps = PRICE_SCALE - lastYes;
+        }
+
+        yesBps = clampBps(yesBps);
+        noBps = clampBps(noBps);
 
         events.push({
           id: ev.id,
@@ -65,25 +106,32 @@ export default async function handler(req, res) {
           endDate: ev.endDate,
           createdAt: ev.createdAt,
 
-          // Polymarket互換の「価格=確率」
           prices: {
-            yes: yesPriceBps / PRICE_SCALE,
-            no: (PRICE_SCALE - yesPriceBps) / PRICE_SCALE,
-            yesBps: yesPriceBps,
-            noBps: PRICE_SCALE - yesPriceBps,
+            yes: yesBps / PRICE_SCALE,
+            no: noBps / PRICE_SCALE,
+            yesBps,
+            noBps,
           },
 
-          // 軽い統計（必要なら増やす）
-          stats: ev.stats || { trades: 0, openOrders: 0 },
+          stats: {
+            trades: toNumber(ev?.stats?.trades, 0),
+            openOrders: toNumber(ev?.stats?.openOrders, openOrders),
+          },
 
-          // 解決情報
           resolvedAt: ev.resolvedAt || null,
           result: ev.result || null, // "YES" | "NO" | null
         });
       }
 
-      // 期限が近い順（任意）
-      events.sort((a, b) => new Date(a.endDate) - new Date(b.endDate));
+      // 期限が近い順（壊れてる日付は最後へ）
+      events.sort((a, b) => {
+        const ta = new Date(a.endDate).getTime();
+        const tb = new Date(b.endDate).getTime();
+        const aa = Number.isFinite(ta) ? ta : Number.MAX_SAFE_INTEGER;
+        const bb = Number.isFinite(tb) ? tb : Number.MAX_SAFE_INTEGER;
+        return aa - bb;
+      });
+
       return res.status(200).json(events);
     }
 
@@ -115,10 +163,7 @@ export default async function handler(req, res) {
         createdAt: nowISO(),
         endDate: new Date(end).toISOString(),
 
-        // Polymarket風：YES/NO固定
         outcomes: ["YES", "NO"],
-
-        // 初期価格（均等）
         prices: { yesBps: 5000, noBps: 5000 },
 
         stats: { trades: 0, openOrders: 0 },
