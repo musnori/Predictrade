@@ -125,7 +125,17 @@ export default async function handler(req, res) {
       );
 
       children = children.filter(Boolean);
-      children.sort((a, b) => toNum(a.rank, 0) - toNum(b.rank, 0));
+      children.sort((a, b) => {
+        const aLo = toNum(a?.range?.lo, Number.NaN);
+        const bLo = toNum(b?.range?.lo, Number.NaN);
+        if (Number.isFinite(aLo) && Number.isFinite(bLo) && aLo !== bLo) return aLo - bLo;
+
+        const aHi = toNum(a?.range?.hi, Number.NaN);
+        const bHi = toNum(b?.range?.hi, Number.NaN);
+        if (Number.isFinite(aHi) && Number.isFinite(bHi) && aHi !== bHi) return aHi - bHi;
+
+        return String(a.title || "").localeCompare(String(b.title || ""), "ja");
+      });
     }
 
     const endTime = new Date(ev.endDate).getTime();

@@ -80,6 +80,15 @@ export async function resolveEvent({ eventId, result }, adminKey) {
   });
 }
 
+export async function deleteEvent(eventId, adminKey) {
+  const url = adminKey
+    ? `/api/events/${encodeURIComponent(eventId)}/delete?key=${encodeURIComponent(adminKey)}`
+    : `/api/events/${encodeURIComponent(eventId)}/delete`;
+  return api(url, {
+    method: "POST",
+  });
+}
+
 export function getCategoryName(category) {
   const map = {
     sports: "スポーツ",
