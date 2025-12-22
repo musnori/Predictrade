@@ -2,8 +2,6 @@
 import { initAuthAndRender } from "./auth.js";
 import { initUserMenu } from "./userMenu.js";
 
-const LS_ADMIN_KEY = "predictrade.adminKey.v1";
-
 function setText(id, text) {
   const el = document.getElementById(id);
   if (el) el.textContent = text;
@@ -31,10 +29,6 @@ async function fetchHistory(deviceId) {
 
 function uniq(arr) {
   return Array.from(new Set(arr));
-}
-
-function getAdminKey() {
-  return localStorage.getItem(LS_ADMIN_KEY) || "";
 }
 
 async function fetchAdminSnapshot(key) {
@@ -108,8 +102,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const keyInput = document.getElementById("adminKeyInput");
-  const keyStored = getAdminKey();
-  if (keyInput && keyStored) keyInput.value = keyStored;
 
   document.getElementById("adminSnapshotBtn")?.addEventListener("click", async () => {
     const msg = document.getElementById("adminSnapshotMsg");
@@ -117,7 +109,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const key = keyInput?.value?.trim();
       if (!key) throw new Error("ADMIN_KEY required");
-      localStorage.setItem(LS_ADMIN_KEY, key);
       const snapshot = await fetchAdminSnapshot(key);
       renderAdminSnapshot(snapshot);
     } catch (e) {

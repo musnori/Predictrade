@@ -1,19 +1,15 @@
 // src/userMenu.js
 import { rename, logout } from "./auth.js";
 
-const LS_ADMIN_KEY = "predictrade.adminKey.v1";
-
-function getAdminKey() {
-  return localStorage.getItem(LS_ADMIN_KEY) || "";
-}
+let adminSnapshotKey = "";
 
 function ensureAdminKey() {
-  let key = getAdminKey();
+  let key = adminSnapshotKey;
   if (key) return key;
   key = prompt("管理者キー（ADMIN_KEY）を入力してください");
   if (!key) return "";
-  localStorage.setItem(LS_ADMIN_KEY, key.trim());
-  return key.trim();
+  adminSnapshotKey = key.trim();
+  return adminSnapshotKey;
 }
 
 function openAdminSnapshot() {

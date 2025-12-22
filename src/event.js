@@ -24,7 +24,6 @@ let sheetBetPoints = 0;
 
 // units: 10000 units = 1pt
 const UNIT_SCALE = 10000;
-const LS_ADMIN_KEY = "predictrade.adminKey.v1";
 let adminKeyState = { key: "", ok: false, checked: false };
 
 function idFromQuery() {
@@ -56,7 +55,7 @@ function clampPoints(v) {
 }
 
 function getAdminKey() {
-  return localStorage.getItem(LS_ADMIN_KEY) || "";
+  return adminKeyState.ok ? adminKeyState.key : "";
 }
 
 async function verifyAdminKey(key) {
@@ -66,16 +65,15 @@ async function verifyAdminKey(key) {
 }
 
 async function ensureAdminAccess() {
-  const key = getAdminKey();
+  const key = adminKeyState.key;
   if (!key) {
     adminKeyState = { key: "", ok: false, checked: false };
     return false;
   }
-  if (adminKeyState.checked && adminKeyState.key === key) return adminKeyState.ok;
+  if (adminKeyState.checked) return adminKeyState.ok;
 
   const ok = await verifyAdminKey(key);
   adminKeyState = { key, ok, checked: true };
-  if (!ok) localStorage.removeItem(LS_ADMIN_KEY);
   return ok;
 }
 
@@ -664,11 +662,25 @@ async function renderAdminPanel() {
   setAdminGateVisible(false);
 
   const select = document.getElementById("adminResolveSelect");
-  if (select && select.children.length === 0) {
-    select.innerHTML = `
-      <option value="YES">YES</option>
-      <option value="NO">NO</option>
-    `;
+  if (select) {
+    const targetEvent = ev?.type === "range_parent" ? ev : currentEvent();
+    const isRangeParent = targetEvent?.type === "range_parent";
+    const options = isRangeParent
+      ? (Array.isArray(targetEvent?.children) ? targetEvent.children : []).map((child) => ({
+          value: child.id,
+          label: formatRangeLabel(child),
+        }))
+      : (Array.isArray(targetEvent?.outcomes) && targetEvent.outcomes.length > 0
+          ? targetEvent.outcomes
+          : ["YES", "NO"]
+        ).map((outcome) => ({
+          value: String(outcome).toUpperCase(),
+          label: String(outcome).toUpperCase(),
+        }));
+
+    select.innerHTML = options
+      .map((opt) => `<option value="${opt.value}">${opt.label}</option>`)
+      .join("");
   }
 
   const participants = document.getElementById("adminParticipants");
@@ -690,6 +702,21 @@ async function handleAdminResolve() {
   if (!result) return;
 
   try {
+    if (ev?.type === "range_parent") {
+      const children = Array.isArray(ev?.children) ? ev.children : [];
+      if (children.length === 0) throw new Error("子イベントがありません");
+      const hasResolved = children.some((child) => child.status === "resolved");
+      if (hasResolved) throw new Error("既に確定済みの子イベントがあります");
+
+      for (const child of children) {
+        const outcome = child.id === result ? "YES" : "NO";
+        await resolveEvent({ eventId: child.id, result: outcome }, key);
+      }
+      await refresh();
+      if (msg) msg.textContent = "レンジを確定しました";
+      return;
+    }
+
     await resolveEvent({ eventId: currentEvent().id, result }, key);
     await refresh();
     if (msg) msg.textContent = "確定しました";
@@ -822,7 +849,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     await handleAdminClarify();
   });
   document.getElementById("adminLogoutBtn")?.addEventListener("click", () => {
-    localStorage.removeItem(LS_ADMIN_KEY);
     adminKeyState = { key: "", ok: false, checked: false };
     void renderAdminPanel();
   });
@@ -842,7 +868,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       setAdminGateMsg("管理者コードが正しくありません");
       return;
     }
-    localStorage.setItem(LS_ADMIN_KEY, raw);
     adminKeyState = { key: raw, ok: true, checked: true };
     if (input) input.value = "";
     await renderAdminPanel();
