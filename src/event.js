@@ -1,13 +1,21 @@
-// src/event.js (PM v2 - Phase1: Buy order + mint on match + cancel open orders)
+// src/event.js (PM v2 - Ladder UI + betPoints sheet)
 import { initAuthAndRender } from "./auth.js";
 import { initUserMenu } from "./userMenu.js";
-import { getEventById, placeOrder, timeRemaining, getMyOpenOrders, cancelOrder } from "./storage.js";
+import {
+  getEventById,
+  placeOrder,
+  timeRemaining,
+  getMyOpenOrders,
+  cancelOrder,
+} from "./storage.js";
 
 let auth;
 let me = null;
 let ev;
 
 let selectedOutcome = null; // "YES" | "NO"
+let sheetPricePct = 50; // 1..99
+let sheetBetPoints = 0;
 
 // units: 10000 units = 1pt
 const UNIT_SCALE = 10000;
@@ -21,21 +29,29 @@ function unitsToPoints(units) {
   return Math.floor(n / UNIT_SCALE);
 }
 
+function clampPct(v) {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return 50;
+  return Math.max(1, Math.min(99, n));
+}
+function clampPoints(v) {
+  const n = Math.floor(Number(v));
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(10_000_000, n));
+}
+
+/* ================= Header/User ================= */
+
 function renderMe(u) {
-  // auth.jsが旧仕様(points)を返す可能性もあるので両対応
   const name = String(u?.name || u?.displayName || "");
   const pointsMaybe = Number(u?.points || 0);
 
-  // pointsUnits は (available units) を入れる想定
   const unitsMaybe = Number(
-    u?.pointsUnits ??
-      u?.balanceUnits?.available ??
-      u?.availableUnits ??
-      0
+    u?.pointsUnits ?? u?.balanceUnits?.available ?? u?.availableUnits ?? 0
   );
 
   let points = 0;
-  if (Number.isFinite(unitsMaybe) && unitsMaybe > 0) points = unitsToPoints(unitsMaybe);
+  if (Number.isFinite(unitsMaybe) && unitsMaybe >= 0) points = unitsToPoints(unitsMaybe);
   else points = Math.floor(pointsMaybe);
 
   me = { name, points, unitsAvailable: unitsMaybe };
@@ -51,7 +67,9 @@ function renderMeta() {
   const end = new Date(ev.endDate);
   const meta = document.getElementById("eventMeta");
   if (meta) {
-    meta.textContent = `${end.toLocaleString("ja-JP")}（${timeRemaining(ev.endDate)}） / ${ev.category}`;
+    meta.textContent = `${end.toLocaleString("ja-JP")}（${timeRemaining(
+      ev.endDate
+    )}） / ${ev.category}`;
   }
   const titleEl = document.getElementById("title");
   if (titleEl) titleEl.textContent = ev.title ?? "-";
@@ -65,66 +83,84 @@ function updateResolvedBadge() {
 
   if (ev.status === "resolved") {
     badge.classList.remove("hidden");
-    const ans = ev.result || "-";
-    badge.textContent = `確定：${ans}`;
+    badge.textContent = `確定：${ev.result || "-"}`;
   } else {
     badge.classList.add("hidden");
   }
 }
 
-function currentYesProbPct() {
-  // ev.prices = { yes: 0..1, no: 0..1 } 想定（無ければ50%）
-  const yes = Number(ev?.prices?.yes ?? 0.5);
-  const clamped = Math.max(0, Math.min(1, yes));
-  return Math.round(clamped * 100);
+/* ================= Ladder ================= */
+
+function getTickBps() {
+  const v = Number(ev?.market?.tickBps ?? 100);
+  return Number.isFinite(v) && v > 0 ? v : 100;
+}
+function getCenterYesPct() {
+  // v2なら ev.market.initialPriceBps、なければ ev.prices.yes、なければ50
+  const bps =
+    Number(ev?.market?.initialPriceBps) ||
+    Math.round(Number(ev?.prices?.yes ?? 0.5) * 10000) ||
+    5000;
+  const pct = Math.round(bps / 100);
+  return clampPct(pct);
 }
 
-function renderOptions() {
-  const wrap = document.getElementById("options");
-  if (!wrap) return;
-  wrap.innerHTML = "";
+function buildLadderYesPcts(centerPct, tickBps, rows = 13) {
+  const tickPct = Math.max(1, Math.round(tickBps / 100)); // 100bps=1%
+  const half = Math.floor(rows / 2);
+  const out = [];
+  for (let i = half; i >= -half; i--) {
+    out.push(clampPct(centerPct + i * tickPct));
+  }
+  // 重複排除（端でクランプされると同値が出る）
+  return Array.from(new Set(out));
+}
 
-  const yesPct = currentYesProbPct();
-  const noPct = 100 - yesPct;
+function renderLadder() {
+  const rowsEl = document.getElementById("ladderRows");
+  if (!rowsEl) return;
 
-  const items = [
-    { outcome: "YES", label: "YES", pct: yesPct },
-    { outcome: "NO", label: "NO", pct: noPct },
-  ];
+  const center = getCenterYesPct();
+  const tickBps = getTickBps();
+  const pcts = buildLadderYesPcts(center, tickBps, 13);
 
-  items.forEach((it) => {
-    const card = document.createElement("div");
-    card.className = "opt rounded-2xl p-4 cursor-pointer";
-    card.addEventListener("click", () => {
+  rowsEl.innerHTML = "";
+  pcts.forEach((yesPct) => {
+    const noPct = 100 - yesPct;
+
+    const row = document.createElement("div");
+    row.className =
+      "grid grid-cols-3 gap-2 px-4 py-2 border-b border-slate-800 items-center";
+
+    row.innerHTML = `
+      <button class="buyYes px-3 py-2 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-600/30 text-emerald-200 text-sm text-left">
+        Buy YES
+        <div class="text-xs text-emerald-300/80">${yesPct}%</div>
+      </button>
+
+      <div class="text-center text-slate-200 font-semibold">
+        ${yesPct}%
+      </div>
+
+      <button class="buyNo px-3 py-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/25 text-sky-100 text-sm text-right">
+        Buy NO
+        <div class="text-xs text-sky-200/80">${noPct}%</div>
+      </button>
+    `;
+
+    row.querySelector(".buyYes")?.addEventListener("click", () => {
       if (ev.status === "resolved") return;
-
-      selectedOutcome = it.outcome;
-      document.querySelectorAll(".opt").forEach((x) => x.classList.remove("selected"));
-      card.classList.add("selected");
-
-      // sheet初期化
-      setSheetOutcome(it.outcome);
-      setPricePct(it.pct); // 初期は現在確率に寄せる
-      setQty(1);
-      setSheetMsg("");
-      showSheet(true);
+      openSheet("YES", yesPct);
     });
 
-    card.innerHTML = `
-      <div class="flex items-center justify-between gap-3">
-        <div class="font-medium text-lg">${it.label}</div>
-        <div class="text-emerald-400 font-bold text-xl">${it.pct}%</div>
-      </div>
-      <div class="mt-3">
-        <div class="w-full bg-slate-700/50 rounded-full h-2">
-          <div class="h-2 rounded-full bg-emerald-500" style="width:${it.pct}%"></div>
-        </div>
-      </div>
-    `;
-    wrap.appendChild(card);
-  });
+    row.querySelector(".buyNo")?.addEventListener("click", () => {
+      if (ev.status === "resolved") return;
+      // NOの価格は (100 - YES価格)
+      openSheet("NO", noPct);
+    });
 
-  updateResolvedBadge();
+    rowsEl.appendChild(row);
+  });
 }
 
 /* ================= Bottom Sheet ================= */
@@ -133,13 +169,13 @@ const overlayEl = () => document.getElementById("sheetOverlay");
 const sheetEl = () => document.getElementById("sheet");
 const sheetMsgEl = () => document.getElementById("sheetMsg");
 
-const outcomeTextEl = () => document.getElementById("sheetOutcomeText"); // "YES/NO"
-const probEl = () => document.getElementById("sheetProb"); // "63%"
-const priceRangeEl = () => document.getElementById("priceRange"); // range 1..99
-const priceInputEl = () => document.getElementById("pricePct"); // number 1..99
-const qtyInputEl = () => document.getElementById("qty"); // number
-const costEl = () => document.getElementById("costPoints"); // "123 pt"
-const fillHintEl = () => document.getElementById("fillHint"); // "約定すれば…"
+const sheetOptionTextEl = () => document.getElementById("sheetOptionText");
+const sheetSideLabelEl = () => document.getElementById("sheetSideLabel");
+const sheetProbEl = () => document.getElementById("sheetProb");
+
+const betBigEl = () => document.getElementById("betBig");
+const betInputEl = () => document.getElementById("betPoints");
+const payoutEl = () => document.getElementById("payout");
 
 function showSheet(show) {
   const ov = overlayEl();
@@ -155,68 +191,54 @@ function setSheetMsg(text) {
   if (el) el.textContent = text || "";
 }
 
-function setSheetOutcome(outcome) {
-  const el = outcomeTextEl();
-  if (el) el.textContent = outcome;
+function setSheetPricePct(pct) {
+  sheetPricePct = clampPct(pct);
+  if (sheetProbEl()) sheetProbEl().textContent = `${sheetPricePct}%`;
+  computeDerived();
 }
 
-function clampPct(v) {
-  const n = Math.round(Number(v));
-  if (!Number.isFinite(n)) return 50;
-  return Math.max(1, Math.min(99, n)); // 0/100は扱いにくいので除外
+function setBetPoints(v) {
+  sheetBetPoints = clampPoints(v);
+  if (betInputEl()) betInputEl().value = String(sheetBetPoints);
+  if (betBigEl()) betBigEl().textContent = String(sheetBetPoints);
+  computeDerived();
 }
 
-function getPricePct() {
-  return clampPct(priceInputEl()?.value ?? priceRangeEl()?.value ?? 50);
-}
-function setPricePct(pct) {
-  const p = clampPct(pct);
-  if (priceRangeEl()) priceRangeEl().value = String(p);
-  if (priceInputEl()) priceInputEl().value = String(p);
-  if (probEl()) probEl().textContent = `${p}%`;
-  updateCostUI();
-}
+function computeDerived() {
+  // priceBps = 1..99% -> 100..9900
+  const priceBps = sheetPricePct * 100;
+  const points = sheetBetPoints;
 
-function clampQty(v) {
-  const n = Math.floor(Number(v));
-  if (!Number.isFinite(n)) return 1;
-  return Math.max(1, Math.min(5000, n));
-}
-function getQty() {
-  return clampQty(qtyInputEl()?.value ?? 1);
-}
-function setQty(q) {
-  const n = clampQty(q);
-  if (qtyInputEl()) qtyInputEl().value = String(n);
-  updateCostUI();
-}
+  // points(=pt予算) → qty(shares)
+  // costUnits = priceBps * qty
+  // pointsUnits = points * UNIT_SCALE
+  const qty = Math.floor((points * UNIT_SCALE) / priceBps);
 
-function updateCostUI() {
-  if (!selectedOutcome) return;
-
-  const pct = getPricePct(); // 1..99
-  const qty = getQty();
-
-  // 入力pctを「そのアウトカムの価格」として使う
-  const priceBps = pct * 100;
-  const costUnits = priceBps * qty;
-
-  // 表示はpt（切り上げ表示）
-  const costPoints = Math.ceil(costUnits / UNIT_SCALE);
-  if (costEl()) costEl().textContent = `${costPoints.toLocaleString()} pt`;
-
-  const hint = fillHintEl();
-  if (hint) {
-    hint.textContent =
-      "※ 約定（相手注文と一致）した分だけシェアが発行されます。未約定分は注文として残り、キャンセルでロックが戻ります。";
+  if (payoutEl()) {
+    payoutEl().textContent =
+      qty > 0 ? `当たれば ${qty.toLocaleString()} pt（想定）` : "—";
   }
 }
 
-/* ================= My Orders ================= */
+function openSheet(outcome, pricePct) {
+  selectedOutcome = outcome;
+  setSheetMsg("");
+
+  // ヘッダ表示
+  if (sheetOptionTextEl()) sheetOptionTextEl().textContent = ev?.title ?? "-";
+  if (sheetSideLabelEl()) sheetSideLabelEl().textContent = outcome === "YES" ? "Yes" : "No";
+
+  setSheetPricePct(pricePct);
+  setBetPoints(0);
+
+  showSheet(true);
+}
+
+/* ================= My Orders (optional UI) ================= */
 
 async function renderMyOrders() {
   const wrap = document.getElementById("myOrders");
-  if (!wrap) return;
+  if (!wrap) return; // event.htmlに無ければ何もしない
 
   const data = await getMyOpenOrders(ev.id, auth.deviceId);
   const orders = data?.orders || [];
@@ -245,18 +267,11 @@ async function renderMyOrders() {
 
     row.querySelector("button").onclick = async () => {
       if (!confirm(`注文をキャンセルしますか？（残り ${o.remaining}）`)) return;
-
       const out = await cancelOrder(ev.id, o.id, auth.deviceId);
 
-      // 残高更新
       if (out?.balanceUnits) {
-        renderMe({
-          name: me?.name,
-          pointsUnits: out.balanceUnits.available,
-        });
+        renderMe({ name: me?.name, pointsUnits: out.balanceUnits.available });
       }
-
-      // 再描画
       ev = out.event || ev;
       await refresh();
       await renderMyOrders();
@@ -266,12 +281,10 @@ async function renderMyOrders() {
   });
 }
 
-/* ================= refresh ================= */
-
 async function refresh() {
   ev = await getEventById(ev.id);
   renderMeta();
-  renderOptions();
+  renderLadder();
   updateResolvedBadge();
 }
 
@@ -280,7 +293,6 @@ async function refresh() {
 document.addEventListener("DOMContentLoaded", async () => {
   auth = await initAuthAndRender();
 
-  // 旧: points / 新: pointsUnits の両対応
   renderMe({
     name: auth?.name,
     points: auth?.points,
@@ -289,81 +301,83 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   initUserMenu();
 
-  const backBtn = document.getElementById("backBtn");
-  if (backBtn) {
-    backBtn.onclick = () =>
-      history.length > 1 ? history.back() : (location.href = "index.html");
-  }
+  document.getElementById("backBtn")?.addEventListener("click", () =>
+    history.length > 1 ? history.back() : (location.href = "index.html")
+  );
 
   const id = idFromQuery();
   if (!id) return;
 
   ev = await getEventById(id);
   renderMeta();
-  renderOptions();
+  renderLadder();
   updateResolvedBadge();
 
-  // My Orders initial
   await renderMyOrders();
 
   // sheet close
   overlayEl()?.addEventListener("click", () => showSheet(false));
   document.getElementById("sheetClose")?.addEventListener("click", () => showSheet(false));
 
-  // price sync
-  priceRangeEl()?.addEventListener("input", () => setPricePct(priceRangeEl()?.value));
-  priceInputEl()?.addEventListener("input", () => setPricePct(priceInputEl()?.value));
+  // bet input wiring
+  betInputEl()?.addEventListener("input", () => setBetPoints(betInputEl().value));
 
-  // qty sync
-  qtyInputEl()?.addEventListener("input", () => setQty(qtyInputEl()?.value));
+  document.getElementById("plusBtn")?.addEventListener("click", () => setBetPoints(sheetBetPoints + 1));
+  document.getElementById("minusBtn")?.addEventListener("click", () => setBetPoints(Math.max(0, sheetBetPoints - 1)));
+
+  document.querySelectorAll(".quickBtn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const add = Number(btn.dataset.add || 0);
+      setBetPoints(sheetBetPoints + add);
+    });
+  });
+
+  document.getElementById("maxBtn")?.addEventListener("click", () => {
+    setBetPoints(Math.max(0, Number(me?.points || 0)));
+  });
 
   // trade
-  const tradeBtn = document.getElementById("tradeBtn");
-  if (tradeBtn) {
-    tradeBtn.onclick = async () => {
-      setSheetMsg("");
-      try {
-        if (ev.status === "resolved") throw new Error("確定済みです");
-        if (!selectedOutcome) throw new Error("YES/NO を選んでください");
+  document.getElementById("tradeBtn")?.addEventListener("click", async () => {
+    setSheetMsg("");
+    try {
+      if (ev.status === "resolved") throw new Error("確定済みです");
+      if (!selectedOutcome) throw new Error("YES/NO を選んでください");
 
-        const pct = getPricePct();
-        const qty = getQty();
-        const priceBps = pct * 100;
+      const priceBps = sheetPricePct * 100;
+      const points = sheetBetPoints;
 
-        const out = await placeOrder({
-          eventId: ev.id,
-          deviceId: auth.deviceId,
-          name: me?.name || auth?.name || "Guest",
-          outcome: selectedOutcome,
-          side: "buy",
-          priceBps,
-          qty,
-        });
+      // points→qty
+      const qty = Math.floor((points * UNIT_SCALE) / priceBps);
+      if (qty <= 0) throw new Error("ポイントが少なすぎます（qty=0）");
 
-        // 残高更新
-        if (out?.balanceUnits) {
-          renderMe({
-            name: me?.name,
-            pointsUnits: out.balanceUnits.available,
-          });
-        }
+      const out = await placeOrder({
+        eventId: ev.id,
+        deviceId: auth.deviceId,
+        name: me?.name || auth?.name || "Guest",
+        outcome: selectedOutcome,
+        side: "buy",
+        priceBps,
+        qty,
+      });
 
-        // event & orders refresh
-        await refresh();
-        await renderMyOrders();
-        showSheet(false);
-
-        const topMsg = document.getElementById("msg");
-        if (topMsg) {
-          topMsg.textContent =
-            out?.filled > 0
-              ? `注文しました（約定: ${out.filled} / 残り: ${out.remaining}）`
-              : "注文しました（未約定）";
-          setTimeout(() => (topMsg.textContent = ""), 2000);
-        }
-      } catch (e) {
-        setSheetMsg(String(e?.message || e));
+      if (out?.balanceUnits) {
+        renderMe({ name: me?.name, pointsUnits: out.balanceUnits.available });
       }
-    };
-  }
+
+      await refresh();
+      await renderMyOrders();
+      showSheet(false);
+
+      const topMsg = document.getElementById("msg");
+      if (topMsg) {
+        topMsg.textContent =
+          out?.filled > 0
+            ? `注文しました（約定: ${out.filled} / 残り: ${out.remaining}）`
+            : "注文しました（未約定）";
+        setTimeout(() => (topMsg.textContent = ""), 2000);
+      }
+    } catch (e) {
+      setSheetMsg(String(e?.message || e));
+    }
+  });
 });
