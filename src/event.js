@@ -25,6 +25,7 @@ let sheetBetPoints = 0;
 // units: 10000 units = 1pt
 const UNIT_SCALE = 10000;
 const LS_ADMIN_KEY = "predictrade.adminKey.v1";
+let adminKeyState = { key: "", ok: false, checked: false };
 
 function idFromQuery() {
   return new URLSearchParams(location.search).get("id");
@@ -56,6 +57,37 @@ function clampPoints(v) {
 
 function getAdminKey() {
   return localStorage.getItem(LS_ADMIN_KEY) || "";
+}
+
+async function verifyAdminKey(key) {
+  if (!key) return false;
+  const res = await fetch(`/api/admin/snapshot?key=${encodeURIComponent(key)}`);
+  return res.ok;
+}
+
+async function ensureAdminAccess() {
+  const key = getAdminKey();
+  if (!key) {
+    adminKeyState = { key: "", ok: false, checked: false };
+    return false;
+  }
+  if (adminKeyState.checked && adminKeyState.key === key) return adminKeyState.ok;
+
+  const ok = await verifyAdminKey(key);
+  adminKeyState = { key, ok, checked: true };
+  if (!ok) localStorage.removeItem(LS_ADMIN_KEY);
+  return ok;
+}
+
+function setAdminGateVisible(show) {
+  const gate = document.getElementById("adminGate");
+  if (!gate) return;
+  gate.classList.toggle("hidden", !show);
+}
+
+function setAdminGateMsg(text) {
+  const msg = document.getElementById("adminGateMsg");
+  if (msg) msg.textContent = text || "";
 }
 
 /* ================= Header/User ================= */
@@ -619,15 +651,17 @@ async function renderMyOrders() {
   wrap.appendChild(list);
 }
 
-function renderAdminPanel() {
+async function renderAdminPanel() {
   const panel = document.getElementById("adminPanel");
   if (!panel) return;
-  const key = getAdminKey();
-  if (!key) {
+  const ok = await ensureAdminAccess();
+  if (!ok) {
     panel.classList.add("hidden");
+    setAdminGateVisible(true);
     return;
   }
   panel.classList.remove("hidden");
+  setAdminGateVisible(false);
 
   const select = document.getElementById("adminResolveSelect");
   if (select && select.children.length === 0) {
@@ -703,7 +737,7 @@ async function refresh() {
   renderRules();
   await renderTrades();
   await renderPositions();
-  renderAdminPanel();
+  await renderAdminPanel();
 }
 
 /* ================= Boot ================= */
@@ -743,7 +777,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await renderMyOrders();
   await renderTrades();
   await renderPositions();
-  renderAdminPanel();
+  await renderAdminPanel();
 
   document.getElementById("quickYesBtn")?.addEventListener("click", () => {
     const target = currentEvent();
@@ -789,10 +823,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   document.getElementById("adminLogoutBtn")?.addEventListener("click", () => {
     localStorage.removeItem(LS_ADMIN_KEY);
-    renderAdminPanel();
+    adminKeyState = { key: "", ok: false, checked: false };
+    void renderAdminPanel();
   });
   document.getElementById("adminRefreshBtn")?.addEventListener("click", async () => {
     await refresh();
+  });
+  document.getElementById("adminKeySaveBtn")?.addEventListener("click", async () => {
+    setAdminGateMsg("");
+    const input = document.getElementById("adminKeyEntry");
+    const raw = input?.value?.trim();
+    if (!raw) {
+      setAdminGateMsg("管理者コードを入力してください");
+      return;
+    }
+    const ok = await verifyAdminKey(raw);
+    if (!ok) {
+      setAdminGateMsg("管理者コードが正しくありません");
+      return;
+    }
+    localStorage.setItem(LS_ADMIN_KEY, raw);
+    adminKeyState = { key: raw, ok: true, checked: true };
+    if (input) input.value = "";
+    await renderAdminPanel();
   });
   const deleteBtn = document.getElementById("adminDeleteEventBtn");
   if (deleteBtn) {
