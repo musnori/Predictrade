@@ -3,6 +3,7 @@ import { initAuthAndRender } from "./auth.js";
 import { initUserMenu } from "./userMenu.js";
 import {
   getEventById,
+  getCategoryName,
   placeOrder,
   timeRemaining,
   getMyOpenOrders,
@@ -67,9 +68,17 @@ function renderMeta() {
   const end = new Date(ev.endDate);
   const meta = document.getElementById("eventMeta");
   if (meta) {
-    meta.textContent = `${end.toLocaleString("ja-JP")}（${timeRemaining(
-      ev.endDate
-    )}） / ${ev.category}`;
+    meta.textContent = `${end.toLocaleString("ja-JP")}（${timeRemaining(ev.endDate)}）`;
+  }
+
+  const categoryBadge = document.getElementById("categoryBadge");
+  if (categoryBadge) {
+    categoryBadge.textContent = getCategoryName(ev.category || "other");
+  }
+
+  const marketTime = document.getElementById("marketTime");
+  if (marketTime) {
+    marketTime.textContent = timeRemaining(ev.endDate);
   }
   const titleEl = document.getElementById("title");
   if (titleEl) titleEl.textContent = ev.title ?? "-";
@@ -130,7 +139,7 @@ function renderLadder() {
 
     const row = document.createElement("div");
     row.className =
-      "grid grid-cols-3 gap-2 px-4 py-2 border-b border-slate-800 items-center";
+      "grid grid-cols-3 gap-2 px-6 py-2 border-b border-slate-800 items-center";
 
     row.innerHTML = `
       <button class="buyYes px-3 py-2 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-600/30 text-emerald-200 text-sm text-left">
@@ -161,6 +170,27 @@ function renderLadder() {
 
     rowsEl.appendChild(row);
   });
+
+  updateMarketSnapshot(center);
+}
+
+function updateMarketSnapshot(yesPct) {
+  const yes = clampPct(yesPct ?? getCenterYesPct());
+  const no = 100 - yes;
+
+  const yesEl = document.getElementById("marketPriceYes");
+  const noEl = document.getElementById("marketPriceNo");
+  const splitEl = document.getElementById("marketSplitText");
+  const barEl = document.getElementById("marketYesBar");
+  const quickYesPrice = document.getElementById("quickYesPrice");
+  const quickNoPrice = document.getElementById("quickNoPrice");
+
+  if (yesEl) yesEl.textContent = `${yes}%`;
+  if (noEl) noEl.textContent = `${no}%`;
+  if (splitEl) splitEl.textContent = `${yes}% / ${no}%`;
+  if (barEl) barEl.style.width = `${yes}%`;
+  if (quickYesPrice) quickYesPrice.textContent = `${yes}%`;
+  if (quickNoPrice) quickNoPrice.textContent = `${no}%`;
 }
 
 /* ================= Bottom Sheet ================= */
@@ -243,16 +273,19 @@ async function renderMyOrders() {
   const data = await getMyOpenOrders(ev.id, auth.deviceId);
   const orders = data?.orders || [];
 
-  wrap.innerHTML = "";
+  wrap.innerHTML = `<div class="text-sm font-semibold">My orders</div>`;
+  const list = document.createElement("div");
+  list.className = "mt-3 space-y-2";
   if (orders.length === 0) {
-    wrap.innerHTML = `<div class="text-slate-400 text-sm">未約定の注文はありません</div>`;
+    list.innerHTML = `<div class="text-slate-400 text-sm">未約定の注文はありません</div>`;
+    wrap.appendChild(list);
     return;
   }
 
   orders.forEach((o) => {
     const row = document.createElement("div");
     row.className =
-      "flex items-center justify-between gap-2 bg-slate-900/40 border border-slate-700 rounded-lg px-3 py-2";
+      "flex items-center justify-between gap-2 bg-slate-900/40 border border-slate-700 rounded-xl px-3 py-2";
 
     const pct = Math.round(Number(o.priceBps || 0) / 100);
     const lockedPt = (Number(o.remaining || 0) * Number(o.priceBps || 0)) / UNIT_SCALE;
@@ -277,8 +310,10 @@ async function renderMyOrders() {
       await renderMyOrders();
     };
 
-    wrap.appendChild(row);
+    list.appendChild(row);
   });
+
+  wrap.appendChild(list);
 }
 
 async function refresh() {
@@ -314,6 +349,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   updateResolvedBadge();
 
   await renderMyOrders();
+
+  document.getElementById("quickYesBtn")?.addEventListener("click", () => {
+    if (ev.status === "resolved") return;
+    openSheet("YES", getCenterYesPct());
+  });
+
+  document.getElementById("quickNoBtn")?.addEventListener("click", () => {
+    if (ev.status === "resolved") return;
+    openSheet("NO", 100 - getCenterYesPct());
+  });
 
   // sheet close
   overlayEl()?.addEventListener("click", () => showSheet(false));

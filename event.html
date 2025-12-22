@@ -6,8 +6,20 @@
     <title>PredicTrade - Event</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-      body { background: #0b1220; }
-      .opt { background: rgba(15,23,42,.55); border: 1px solid rgba(148,163,184,.18); }
+      body {
+        background: radial-gradient(circle at top, rgba(30, 64, 175, 0.2), transparent 45%),
+          #0b1020;
+      }
+      .card {
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        box-shadow: 0 20px 45px rgba(15, 23, 42, 0.25);
+      }
+      .pill {
+        background: rgba(148, 163, 184, 0.12);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+      }
+      .opt { background: rgba(15, 23, 42, .55); border: 1px solid rgba(148,163,184,.18); }
       .opt.selected { border-color: rgba(16,185,129,.55); box-shadow: 0 0 0 2px rgba(16,185,129,.15) inset; }
       .sheet-hidden { transform: translateY(110%); opacity: 0; pointer-events: none; }
       .overlay-hidden { opacity: 0; pointer-events: none; }
@@ -15,14 +27,22 @@
   </head>
 
   <body class="text-slate-100">
-    <header class="sticky top-0 z-30 bg-slate-950/60 backdrop-blur border-b border-slate-800">
-      <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+    <header class="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-950/70 backdrop-blur">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
         <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center font-bold">P</div>
-          <div class="font-semibold text-lg">PredicTrade</div>
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/90 flex items-center justify-center font-bold text-slate-900">P</div>
+          <div>
+            <div class="font-semibold text-lg leading-tight">PredicTrade</div>
+            <div class="text-xs text-slate-400">Prediction Market</div>
+          </div>
         </div>
 
-        <!-- ✅ 右上：タップでメニュー -->
+        <nav class="hidden md:flex items-center gap-6 text-sm text-slate-300">
+          <a href="index.html" class="hover:text-white">Markets</a>
+          <a href="dashboard.html" class="hover:text-white">Dashboard</a>
+          <a href="history.html" class="hover:text-white">History</a>
+        </nav>
+
         <div class="relative shrink-0 text-sm">
           <button
             id="userMenuBtn"
@@ -50,67 +70,130 @@
       </div>
     </header>
 
-    <main class="max-w-4xl mx-auto px-4 py-6">
-      <div class="flex items-center justify-between gap-3">
-        <button id="backBtn" class="px-4 py-2 rounded-xl bg-slate-900/50 border border-slate-700 hover:bg-slate-900">
-          ← 戻る
+    <main class="max-w-6xl mx-auto px-4 py-6">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <button id="backBtn" class="px-4 py-2 rounded-xl pill hover:bg-slate-900/80">
+          ← Back
         </button>
         <div id="resolvedBadge" class="hidden px-3 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/40 text-emerald-200 text-sm"></div>
       </div>
 
-      <div class="mt-4 text-slate-400 text-sm" id="eventMeta">-</div>
-      <h1 class="mt-3 text-4xl font-bold" id="title">-</h1>
-      <p class="mt-2 text-slate-300" id="desc">-</p>
+      <section class="mt-6 grid lg:grid-cols-[minmax(0,1fr)_360px] gap-6">
+        <div class="space-y-6">
+          <div class="card rounded-3xl p-6">
+            <div class="flex flex-wrap items-center gap-3 text-sm">
+              <span id="categoryBadge" class="pill px-3 py-1 rounded-full text-slate-200">-</span>
+              <span id="eventMeta" class="text-slate-400">-</span>
+            </div>
+            <h1 class="mt-4 text-3xl md:text-4xl font-bold" id="title">-</h1>
+            <p class="mt-3 text-slate-300" id="desc">-</p>
 
-      <section class="mt-6">
-  <div class="text-slate-300 text-sm mb-2">Market</div>
-  <div id="ladderWrap" class="rounded-2xl border border-slate-700 bg-slate-900/40 overflow-hidden">
-    <div class="grid grid-cols-3 gap-2 px-4 py-3 text-xs text-slate-400 border-b border-slate-700">
-      <div>YES</div><div class="text-center">価格</div><div class="text-right">NO</div>
-    </div>
-    <div id="ladderRows"></div>
-  </div>
-</section>
+            <div class="mt-6 grid sm:grid-cols-3 gap-3 text-sm">
+              <div class="pill rounded-2xl p-4">
+                <div class="text-slate-400">Yes price</div>
+                <div class="mt-2 text-2xl font-bold" id="marketPriceYes">-</div>
+              </div>
+              <div class="pill rounded-2xl p-4">
+                <div class="text-slate-400">No price</div>
+                <div class="mt-2 text-2xl font-bold" id="marketPriceNo">-</div>
+              </div>
+              <div class="pill rounded-2xl p-4">
+                <div class="text-slate-400">Time remaining</div>
+                <div class="mt-2 text-2xl font-bold" id="marketTime">-</div>
+              </div>
+            </div>
 
-      <div class="mt-4 text-sm text-amber-200" id="msg"></div>
-
-      <!-- 管理者パネル（ユーザーには見えない：ショートカットで出す） -->
-      <section id="adminPanel" class="hidden mt-10 p-4 rounded-2xl bg-slate-950/50 border border-slate-800">
-        <div class="flex items-center justify-between">
-          <div class="font-bold">管理者</div>
-          <button id="adminLogoutBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">ログアウト</button>
-        </div>
-
-        <div class="mt-4 flex gap-2 flex-wrap">
-          <button id="adminRefreshBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">参加者更新</button>
-          <button id="adminDeleteEventBtn" class="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-sm">イベント削除</button>
-        </div>
-
-        <!-- ✅ 結果確定（分配）UI -->
-        <div class="mt-5 p-3 rounded-xl bg-slate-900/40 border border-slate-700">
-          <div class="font-semibold mb-2">結果確定（分配）</div>
-          <div class="flex items-center gap-2 flex-wrap">
-            <select
-              id="adminResolveSelect"
-              class="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100"
-            ></select>
-            <button
-              id="adminResolveBtn"
-              class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold"
-            >
-              結果を確定して分配
-            </button>
+            <div class="mt-5">
+              <div class="flex items-center justify-between text-xs text-slate-400">
+                <span>Probability split</span>
+                <span id="marketSplitText">-</span>
+              </div>
+              <div class="mt-2 h-3 rounded-full bg-slate-800 overflow-hidden">
+                <div class="h-full bg-emerald-500" id="marketYesBar" style="width: 50%"></div>
+              </div>
+            </div>
           </div>
-          <div id="adminResolveMsg" class="mt-2 text-sm text-amber-200"></div>
-          <div class="mt-2 text-xs text-slate-500">※取り消し不可（確定後は賭けられません）</div>
+
+          <section class="card rounded-3xl overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-800/80">
+              <div class="text-slate-200 font-semibold">Market ladder</div>
+              <div class="text-xs text-slate-400">Polymarket-style price ladder</div>
+            </div>
+            <div id="ladderWrap" class="bg-slate-900/40">
+              <div class="grid grid-cols-3 gap-2 px-6 py-3 text-xs text-slate-400 border-b border-slate-800/80">
+                <div>YES</div><div class="text-center">価格</div><div class="text-right">NO</div>
+              </div>
+              <div id="ladderRows"></div>
+            </div>
+          </section>
+
+          <div class="text-sm text-amber-200" id="msg"></div>
+
+          <section id="adminPanel" class="hidden card rounded-3xl p-6">
+            <div class="flex items-center justify-between">
+              <div class="font-bold">管理者</div>
+              <button id="adminLogoutBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">ログアウト</button>
+            </div>
+
+            <div class="mt-4 flex gap-2 flex-wrap">
+              <button id="adminRefreshBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">参加者更新</button>
+              <button id="adminDeleteEventBtn" class="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-sm">イベント削除</button>
+            </div>
+
+            <div class="mt-5 p-4 rounded-2xl bg-slate-900/40 border border-slate-700">
+              <div class="font-semibold mb-2">結果確定（分配）</div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <select
+                  id="adminResolveSelect"
+                  class="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100"
+                ></select>
+                <button
+                  id="adminResolveBtn"
+                  class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold"
+                >
+                  結果を確定して分配
+                </button>
+              </div>
+              <div id="adminResolveMsg" class="mt-2 text-sm text-amber-200"></div>
+              <div class="mt-2 text-xs text-slate-500">※取り消し不可（確定後は賭けられません）</div>
+            </div>
+
+            <div class="mt-4 space-y-2" id="adminParticipants"></div>
+          </section>
         </div>
 
-        <div class="mt-4 space-y-2" id="adminParticipants"></div>
+        <aside class="space-y-6">
+          <div class="card rounded-3xl p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-xs text-slate-400">Trade</div>
+                <div class="text-lg font-semibold">Quick buy</div>
+              </div>
+              <span class="text-xs text-slate-500">Market order</span>
+            </div>
+
+            <div class="mt-4 grid gap-3">
+              <button id="quickYesBtn" class="w-full rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-4 text-left hover:bg-emerald-500/20">
+                <div class="text-sm text-emerald-200">Buy YES</div>
+                <div class="mt-1 text-2xl font-semibold" id="quickYesPrice">-</div>
+              </button>
+              <button id="quickNoBtn" class="w-full rounded-2xl border border-sky-400/40 bg-sky-500/10 px-4 py-4 text-left hover:bg-sky-500/20">
+                <div class="text-sm text-sky-200">Buy NO</div>
+                <div class="mt-1 text-2xl font-semibold" id="quickNoPrice">-</div>
+              </button>
+            </div>
+
+            <div class="mt-4 text-xs text-slate-500">クリックすると取引シートが開きます。</div>
+          </div>
+
+          <div class="card rounded-3xl p-6" id="myOrders">
+            <!-- JSで差し込み -->
+          </div>
+        </aside>
       </section>
     </main>
 
-    <!-- Bottom Sheet（Polymarket風） -->
-    <div id="sheetOverlay" class="fixed inset-0 z-40 bg-black/50 transition-opacity duration-200 overlay-hidden"></div>
+    <div id="sheetOverlay" class="fixed inset-0 z-40 bg-black/60 transition-opacity duration-200 overlay-hidden"></div>
 
     <div id="sheet" class="fixed left-0 right-0 bottom-0 z-50 transition-all duration-200 sheet-hidden" aria-hidden="true">
       <div class="max-w-4xl mx-auto px-4 pb-4">
