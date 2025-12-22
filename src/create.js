@@ -33,6 +33,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const adminKey = document.getElementById("adminKey").value.trim();
       const title = document.getElementById("eventTitle").value.trim();
       const description = document.getElementById("eventDescription").value.trim();
+      const rules = document.getElementById("eventRules").value.trim();
+      const resolutionSource = document.getElementById("resolutionSource").value.trim();
       const category = document.getElementById("eventCategory").value;
       const endDate = document.getElementById("endDate").value;
 
@@ -42,6 +44,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         deviceId: auth.deviceId, // (API側は使わなくてもOK)
         title,
         description,
+        rules,
+        resolutionSource,
         category,
         endDate: new Date(endDate).toISOString(),
       };

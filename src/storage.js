@@ -52,6 +52,25 @@ export async function placeOrder({ eventId, ...body }) {
   });
 }
 
+export async function addClarification({ eventId, text, by }, adminKey) {
+  const url = adminKey
+    ? `/api/events/${encodeURIComponent(eventId)}/clarify?key=${encodeURIComponent(adminKey)}`
+    : `/api/events/${encodeURIComponent(eventId)}/clarify`;
+  return api(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, by }),
+  });
+}
+
+export async function getEventTrades(eventId, limit = 50) {
+  return api(`/api/events/${encodeURIComponent(eventId)}/trades?limit=${encodeURIComponent(limit)}`);
+}
+
+export async function getEventPosition(eventId, deviceId) {
+  return api(`/api/events/${encodeURIComponent(eventId)}/position?deviceId=${encodeURIComponent(deviceId)}`);
+}
+
 /**
  * PM v2: マーケット確定（後で resolve API を差し替える前提）
  * result: "YES" | "NO"

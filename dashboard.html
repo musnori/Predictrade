@@ -88,6 +88,37 @@
         <div class="text-3xl font-bold text-emerald-400" id="predCount">-</div>
       </div>
     </div>
+
+    <section class="mt-10 bg-slate-800/50 border border-slate-700 rounded-xl p-6" id="adminSnapshotPanel">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div class="text-lg font-semibold">Admin snapshot</div>
+          <div class="text-xs text-slate-400">balances / orderbook / trades / positions / locks</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <input
+            id="adminKeyInput"
+            class="form-input px-3 py-2 rounded-lg text-slate-100 bg-slate-900 border border-slate-700 text-sm"
+            placeholder="ADMIN_KEY"
+          />
+          <button id="adminSnapshotBtn" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold">
+            Load
+          </button>
+        </div>
+      </div>
+
+      <div class="mt-4 grid md:grid-cols-2 gap-4 text-sm">
+        <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4">
+          <div class="text-slate-400 text-xs mb-2">Users</div>
+          <div id="adminUsers" class="space-y-2 text-slate-200"></div>
+        </div>
+        <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4">
+          <div class="text-slate-400 text-xs mb-2">Markets</div>
+          <div id="adminMarkets" class="space-y-2 text-slate-200"></div>
+        </div>
+      </div>
+      <div class="mt-4 text-xs text-amber-200" id="adminSnapshotMsg"></div>
+    </section>
   </div>
 </main>
 
