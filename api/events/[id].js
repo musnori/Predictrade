@@ -3,24 +3,19 @@ import { kv } from "@vercel/kv";
 import {
   getEvent,
   k,
-  PRICE_SCALE,
   bpsToProb,
   listRulesUpdates,
   isAdminRequest,
   withLock,
   listChildEventIds,
   nowISO,
+  listUserIds,
 } from "../_kv.js";
 import { computeOrderbook, computeDisplayPrice, getLastTrade } from "../_market.js";
 
 function toNum(v, fb = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fb;
-}
-
-function clampBps(v) {
-  const n = Math.round(toNum(v, PRICE_SCALE / 2));
-  return Math.max(0, Math.min(PRICE_SCALE, n));
 }
 
 async function computeMarketFor(eventId) {
@@ -54,22 +49,47 @@ async function computeMarketFor(eventId) {
 
 const PMV2_PREFIX = "predictrade:pm:v2";
 
-async function countTrades(eventId) {
-  const len = await kv.llen(k.tradesByEvent(eventId)).catch(() => 0);
-  return toNum(len, 0);
-}
-
-async function countOpenOrders(eventId) {
-  const ids = await kv.smembers(k.ordersByEvent(eventId));
-  let count = 0;
-  for (const oid of Array.isArray(ids) ? ids : []) {
+async function refundOpenOrders(eventId) {
+  const orderIds = await kv.smembers(k.ordersByEvent(eventId));
+  for (const oid of Array.isArray(orderIds) ? orderIds : []) {
     const ord = await kv.get(k.order(eventId, oid));
     if (!ord || typeof ord !== "object") continue;
     if (ord.status !== "open") continue;
-    if (toNum(ord.remaining, 0) <= 0) continue;
-    count += 1;
+    const remaining = toNum(ord.remaining, 0);
+    if (remaining <= 0) continue;
+
+    if (ord.side === "buy") {
+      const refundUnits = toNum(ord.lockedUnits, 0);
+      if (refundUnits > 0) {
+        const balKey = k.balance(ord.userId);
+        const cur = await kv.get(balKey);
+        const obj = cur && typeof cur === "object" ? cur : { available: 0, locked: 0 };
+        const nextAvailable = toNum(obj.available, 0) + refundUnits;
+        const nextLocked = Math.max(0, toNum(obj.locked, 0) - refundUnits);
+        await kv.set(balKey, { ...obj, available: nextAvailable, locked: nextLocked, updatedAt: nowISO() });
+      }
+    } else if (ord.side === "sell") {
+      const posKey = k.position(eventId, ord.userId);
+      const cur = await kv.get(posKey);
+      const obj = cur && typeof cur === "object" ? cur : { yesQty: 0, noQty: 0 };
+      const addQty = toNum(ord.remaining, 0);
+      const outcome = String(ord.outcome || "").toUpperCase();
+      const next =
+        outcome === "YES"
+          ? { yesQty: toNum(obj.yesQty, 0) + addQty, noQty: toNum(obj.noQty, 0) }
+          : { yesQty: toNum(obj.yesQty, 0), noQty: toNum(obj.noQty, 0) + addQty };
+      await kv.set(posKey, next);
+    }
+
+    await kv.set(k.order(eventId, oid), {
+      ...ord,
+      status: "cancelled",
+      remaining: 0,
+      lockedUnits: 0,
+      lockedShares: 0,
+      updatedAt: nowISO(),
+    });
   }
-  return count;
 }
 
 async function deleteOrdersAndTrades(eventId) {
@@ -86,8 +106,17 @@ async function deleteOrdersAndTrades(eventId) {
   await kv.del(k.tradesByEvent(eventId));
 }
 
+async function deletePositions(eventId) {
+  const userIds = await listUserIds();
+  for (const uid of Array.isArray(userIds) ? userIds : []) {
+    await kv.del(k.position(eventId, uid));
+  }
+}
+
 async function deleteEventData(eventId) {
+  await refundOpenOrders(eventId);
   await deleteOrdersAndTrades(eventId);
+  await deletePositions(eventId);
   await kv.del(k.rulesUpdates(eventId));
   await kv.del(k.auditLogs(eventId));
   await kv.del(`${PMV2_PREFIX}:coll:${eventId}`);
@@ -109,14 +138,6 @@ export default async function handler(req, res) {
 
         const ids = ev.type === "range_parent" ? await listChildEventIds(eventId) : [eventId];
         const targetIds = Array.isArray(ids) ? ids : [];
-
-        for (const id of targetIds) {
-          const tradesCount = await countTrades(id);
-          const openOrders = await countOpenOrders(id);
-          if (tradesCount > 0 || openOrders > 0) {
-            throw new Error("trades_or_orders_exist");
-          }
-        }
 
         for (const id of targetIds) {
           await deleteEventData(id);
@@ -256,12 +277,8 @@ export default async function handler(req, res) {
       const code =
         msg.includes("Unauthorized") ? 401 :
         msg.includes("event not found") ? 404 :
-        msg.includes("trades_or_orders_exist") ? 409 :
         500;
-      const text = msg.includes("trades_or_orders_exist")
-        ? "取引や注文があるため削除できません"
-        : msg;
-      return res.status(code).send(text);
+      return res.status(code).send(msg);
     }
     return res.status(500).send(`event read failed: ${msg}`);
   }
