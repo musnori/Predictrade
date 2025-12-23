@@ -50,8 +50,20 @@ function renderAdminSnapshot(snapshot) {
         .map(
           (u) => `
             <div class="flex items-center justify-between text-xs bg-slate-900/40 border border-slate-800 rounded-lg px-2 py-1">
-              <span>${u.displayName || u.userId}</span>
-              <span class="text-slate-400">${((u.balance?.available || 0) / 10000).toFixed(2)} pt / lock ${((u.balance?.locked || 0) / 10000).toFixed(2)}</span>
+              <div>
+                <div>${u.displayName || u.userId}</div>
+                <div class="text-[10px] text-slate-500">${u.userId}</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400">${((u.balance?.available || 0) / 10000).toFixed(2)} pt / lock ${((u.balance?.locked || 0) / 10000).toFixed(2)}</span>
+                <button
+                  class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px]"
+                  data-action="clear-name"
+                  data-user-id="${u.userId}"
+                >
+                  名前削除
+                </button>
+              </div>
             </div>`
         )
         .join("")
@@ -102,6 +114,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const keyInput = document.getElementById("adminKeyInput");
+  const usersEl = document.getElementById("adminUsers");
 
   document.getElementById("adminSnapshotBtn")?.addEventListener("click", async () => {
     const msg = document.getElementById("adminSnapshotMsg");
@@ -112,6 +125,38 @@ document.addEventListener("DOMContentLoaded", async () => {
       const snapshot = await fetchAdminSnapshot(key);
       renderAdminSnapshot(snapshot);
     } catch (e) {
+      if (msg) msg.textContent = String(e?.message || e);
+    }
+  });
+
+  usersEl?.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.dataset.action !== "clear-name") return;
+    const userId = target.dataset.userId;
+    if (!userId) return;
+    const key = keyInput?.value?.trim();
+    if (!key) {
+      const msg = document.getElementById("adminSnapshotMsg");
+      if (msg) msg.textContent = "ADMIN_KEY required";
+      return;
+    }
+    if (!confirm("このユーザーの名前を削除しますか？")) return;
+
+    try {
+      const res = await fetch(
+        `/api/admin/snapshot?action=clearName&key=${encodeURIComponent(key)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId }),
+        }
+      );
+      if (!res.ok) throw new Error(await res.text());
+      const snapshot = await fetchAdminSnapshot(key);
+      renderAdminSnapshot(snapshot);
+    } catch (e) {
+      const msg = document.getElementById("adminSnapshotMsg");
       if (msg) msg.textContent = String(e?.message || e);
     }
   });
