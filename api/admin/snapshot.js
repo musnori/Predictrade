@@ -1,9 +1,24 @@
 // api/admin/snapshot.js
 import { kv } from "@vercel/kv";
-import { isAdminRequest, adminSnapshot, listEventIds, listUserIds, k, PMV2, listRulesUpdates, listAuditLogs } from "../_kv.js";
+import { isAdminRequest, adminSnapshot, listEventIds, listUserIds, k, PMV2, listRulesUpdates, listAuditLogs, getUser, nowISO } from "../_kv.js";
 
 export default async function handler(req, res) {
   try {
+    if (req.method === "POST") {
+      if (!isAdminRequest(req)) return res.status(401).send("admin only");
+      const action = String(req.query?.action || "").trim();
+      if (action !== "clearName") return res.status(400).send("invalid action");
+      const userId = String(req.body?.userId || "").trim();
+      if (!userId) return res.status(400).send("userId required");
+
+      const user = await getUser(userId);
+      if (!user) return res.status(404).send("user not found");
+
+      const next = { ...user, displayName: "Guest", updatedAt: nowISO() };
+      await kv.set(k.user(userId), next);
+      return res.status(200).json({ ok: true, user: next });
+    }
+
     if (req.method !== "GET") return res.status(405).send("Method Not Allowed");
     if (!isAdminRequest(req)) return res.status(401).send("admin only");
 

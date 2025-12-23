@@ -3,24 +3,21 @@ import { kv } from "@vercel/kv";
 import {
   getEvent,
   k,
-  PRICE_SCALE,
   bpsToProb,
   listRulesUpdates,
   isAdminRequest,
   withLock,
   listChildEventIds,
   nowISO,
+  listUserIds,
+  getUser,
+  PMV2,
 } from "../_kv.js";
 import { computeOrderbook, computeDisplayPrice, getLastTrade } from "../_market.js";
 
 function toNum(v, fb = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fb;
-}
-
-function clampBps(v) {
-  const n = Math.round(toNum(v, PRICE_SCALE / 2));
-  return Math.max(0, Math.min(PRICE_SCALE, n));
 }
 
 async function computeMarketFor(eventId) {
@@ -52,24 +49,49 @@ async function computeMarketFor(eventId) {
   };
 }
 
-const PMV2_PREFIX = "predictrade:pm:v2";
+const PMV2_PREFIX = PMV2;
 
-async function countTrades(eventId) {
-  const len = await kv.llen(k.tradesByEvent(eventId)).catch(() => 0);
-  return toNum(len, 0);
-}
-
-async function countOpenOrders(eventId) {
-  const ids = await kv.smembers(k.ordersByEvent(eventId));
-  let count = 0;
-  for (const oid of Array.isArray(ids) ? ids : []) {
+async function refundOpenOrders(eventId) {
+  const orderIds = await kv.smembers(k.ordersByEvent(eventId));
+  for (const oid of Array.isArray(orderIds) ? orderIds : []) {
     const ord = await kv.get(k.order(eventId, oid));
     if (!ord || typeof ord !== "object") continue;
     if (ord.status !== "open") continue;
-    if (toNum(ord.remaining, 0) <= 0) continue;
-    count += 1;
+    const remaining = toNum(ord.remaining, 0);
+    if (remaining <= 0) continue;
+
+    if (ord.side === "buy") {
+      const refundUnits = toNum(ord.lockedUnits, 0);
+      if (refundUnits > 0) {
+        const balKey = k.balance(ord.userId);
+        const cur = await kv.get(balKey);
+        const obj = cur && typeof cur === "object" ? cur : { available: 0, locked: 0 };
+        const nextAvailable = toNum(obj.available, 0) + refundUnits;
+        const nextLocked = Math.max(0, toNum(obj.locked, 0) - refundUnits);
+        await kv.set(balKey, { ...obj, available: nextAvailable, locked: nextLocked, updatedAt: nowISO() });
+      }
+    } else if (ord.side === "sell") {
+      const posKey = k.position(eventId, ord.userId);
+      const cur = await kv.get(posKey);
+      const obj = cur && typeof cur === "object" ? cur : { yesQty: 0, noQty: 0 };
+      const addQty = toNum(ord.remaining, 0);
+      const outcome = String(ord.outcome || "").toUpperCase();
+      const next =
+        outcome === "YES"
+          ? { yesQty: toNum(obj.yesQty, 0) + addQty, noQty: toNum(obj.noQty, 0) }
+          : { yesQty: toNum(obj.yesQty, 0), noQty: toNum(obj.noQty, 0) + addQty };
+      await kv.set(posKey, next);
+    }
+
+    await kv.set(k.order(eventId, oid), {
+      ...ord,
+      status: "cancelled",
+      remaining: 0,
+      lockedUnits: 0,
+      lockedShares: 0,
+      updatedAt: nowISO(),
+    });
   }
-  return count;
 }
 
 async function deleteOrdersAndTrades(eventId) {
@@ -86,13 +108,128 @@ async function deleteOrdersAndTrades(eventId) {
   await kv.del(k.tradesByEvent(eventId));
 }
 
+async function deletePositions(eventId) {
+  const userIds = await listUserIds();
+  for (const uid of Array.isArray(userIds) ? userIds : []) {
+    await kv.del(k.position(eventId, uid));
+  }
+}
+
 async function deleteEventData(eventId) {
+  await refundOpenOrders(eventId);
   await deleteOrdersAndTrades(eventId);
+  await deletePositions(eventId);
   await kv.del(k.rulesUpdates(eventId));
   await kv.del(k.auditLogs(eventId));
   await kv.del(`${PMV2_PREFIX}:coll:${eventId}`);
   await kv.del(k.event(eventId));
   await kv.srem(k.idxEvents(), eventId);
+}
+
+async function computeAdminStats(eventId, ev) {
+  const userIds = await listUserIds();
+  const userMap = new Map();
+  for (const uid of Array.isArray(userIds) ? userIds : []) {
+    const user = await getUser(uid);
+    if (user) {
+      userMap.set(uid, {
+        userId: uid,
+        name: String(user.displayName || user.name || uid),
+      });
+    }
+  }
+
+  const orderIds = await kv.smembers(k.ordersByEvent(eventId));
+  const openOrdersByUser = {};
+  let openOrdersCount = 0;
+  for (const oid of Array.isArray(orderIds) ? orderIds : []) {
+    const ord = await kv.get(k.order(eventId, oid));
+    if (!ord || typeof ord !== "object") continue;
+    if (ord.status !== "open") continue;
+    if (toNum(ord.remaining, 0) <= 0) continue;
+    openOrdersCount += 1;
+    const uid = String(ord.userId || "");
+    if (!uid) continue;
+    openOrdersByUser[uid] = (openOrdersByUser[uid] || 0) + 1;
+  }
+
+  const tradeIds = await kv.lrange(k.tradesByEvent(eventId), 0, -1).catch(() => []);
+  const tradeCountByUser = {};
+  for (const tid of Array.isArray(tradeIds) ? tradeIds : []) {
+    const t = await kv.get(k.trade(eventId, tid));
+    if (!t || typeof t !== "object") continue;
+    const takerId = String(t?.taker?.userId || "");
+    const makerId = String(t?.maker?.userId || "");
+    if (takerId) tradeCountByUser[takerId] = (tradeCountByUser[takerId] || 0) + 1;
+    if (makerId) tradeCountByUser[makerId] = (tradeCountByUser[makerId] || 0) + 1;
+  }
+
+  const participants = [];
+  let totalYes = 0;
+  let totalNo = 0;
+  for (const uid of Array.isArray(userIds) ? userIds : []) {
+    const pos = await kv.get(k.position(eventId, uid));
+    const obj = pos && typeof pos === "object" ? pos : { yesQty: 0, noQty: 0 };
+    const yesQty = toNum(obj.yesQty, 0);
+    const noQty = toNum(obj.noQty, 0);
+    const openOrders = toNum(openOrdersByUser[uid], 0);
+    const trades = toNum(tradeCountByUser[uid], 0);
+
+    totalYes += yesQty;
+    totalNo += noQty;
+
+    if (yesQty > 0 || noQty > 0 || openOrders > 0 || trades > 0) {
+      const meta = userMap.get(uid) || { userId: uid, name: uid };
+      participants.push({
+        userId: uid,
+        name: meta.name,
+        yesQty,
+        noQty,
+        openOrders,
+        trades,
+      });
+    }
+  }
+
+  participants.sort((a, b) => {
+    const aTotal = a.yesQty + a.noQty;
+    const bTotal = b.yesQty + b.noQty;
+    if (aTotal !== bTotal) return bTotal - aTotal;
+    return String(a.name || "").localeCompare(String(b.name || ""), "ja");
+  });
+
+  const collKey = `${PMV2_PREFIX}:coll:${eventId}`;
+  const collateralUnits = toNum(await kv.get(collKey), 0);
+  const payouts = [];
+  if (ev?.status === "resolved" && ev?.result) {
+    const win = String(ev.result || "").toUpperCase();
+    for (const p of participants) {
+      const winQty = win === "YES" ? p.yesQty : p.noQty;
+      if (winQty <= 0) continue;
+      payouts.push({
+        userId: p.userId,
+        name: p.name,
+        winQty,
+        paidPoints: winQty,
+      });
+    }
+    payouts.sort((a, b) => b.paidPoints - a.paidPoints);
+  }
+
+  return {
+    event: { id: ev?.id, title: ev?.title, status: ev?.status, result: ev?.result || null },
+    summary: {
+      participantsCount: participants.length,
+      tradesCount: Array.isArray(tradeIds) ? tradeIds.length : 0,
+      openOrdersCount,
+      collateralUnits,
+      collateralPoints: collateralUnits / 10000,
+      yesShares: totalYes,
+      noShares: totalNo,
+    },
+    participants,
+    payouts,
+  };
 }
 
 export default async function handler(req, res) {
@@ -109,14 +246,6 @@ export default async function handler(req, res) {
 
         const ids = ev.type === "range_parent" ? await listChildEventIds(eventId) : [eventId];
         const targetIds = Array.isArray(ids) ? ids : [];
-
-        for (const id of targetIds) {
-          const tradesCount = await countTrades(id);
-          const openOrders = await countOpenOrders(id);
-          if (tradesCount > 0 || openOrders > 0) {
-            throw new Error("trades_or_orders_exist");
-          }
-        }
 
         for (const id of targetIds) {
           await deleteEventData(id);
@@ -234,6 +363,9 @@ export default async function handler(req, res) {
         ? "tradingClosed"
         : ev.status;
 
+    const adminMode = req.query?.admin === "1" && isAdminRequest(req);
+    const adminStats = adminMode ? await computeAdminStats(eventId, ev) : null;
+
     return res.status(200).json({
       ...ev,
       status,
@@ -248,6 +380,7 @@ export default async function handler(req, res) {
       myOpenOrders,
       position,
       children,
+      adminStats,
     });
   } catch (e) {
     console.error("events/[id] pm2 error:", e);
@@ -256,12 +389,8 @@ export default async function handler(req, res) {
       const code =
         msg.includes("Unauthorized") ? 401 :
         msg.includes("event not found") ? 404 :
-        msg.includes("trades_or_orders_exist") ? 409 :
         500;
-      const text = msg.includes("trades_or_orders_exist")
-        ? "取引や注文があるため削除できません"
-        : msg;
-      return res.status(code).send(text);
+      return res.status(code).send(msg);
     }
     return res.status(500).send(`event read failed: ${msg}`);
   }

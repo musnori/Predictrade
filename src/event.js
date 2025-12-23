@@ -10,6 +10,7 @@ import {
   addClarification,
   resolveEvent,
   deleteEvent,
+  getAdminEventStats,
 } from "./storage.js";
 
 let auth;
@@ -165,6 +166,7 @@ function setActiveEvent(nextEvent) {
   renderRangeOutcomes();
   renderLadder();
   void renderMyOrders();
+  void renderAdminPanel();
 }
 
 function renderRangeOutcomes() {
@@ -662,17 +664,20 @@ async function renderAdminPanel() {
   panel.classList.remove("hidden");
   setAdminGateVisible(false);
 
+  const targetEvent = ev?.type === "range_parent" ? currentEvent() : ev;
+  if (!targetEvent) return;
+
   const select = document.getElementById("adminResolveSelect");
   if (select) {
-    const targetEvent = ev?.type === "range_parent" ? ev : currentEvent();
-    const isRangeParent = targetEvent?.type === "range_parent";
+    const resolveTarget = ev?.type === "range_parent" ? ev : currentEvent();
+    const isRangeParent = resolveTarget?.type === "range_parent";
     const options = isRangeParent
-      ? (Array.isArray(targetEvent?.children) ? targetEvent.children : []).map((child) => ({
+      ? (Array.isArray(resolveTarget?.children) ? resolveTarget.children : []).map((child) => ({
           value: child.id,
           label: formatRangeLabel(child),
         }))
-      : (Array.isArray(targetEvent?.outcomes) && targetEvent.outcomes.length > 0
-          ? targetEvent.outcomes
+      : (Array.isArray(resolveTarget?.outcomes) && resolveTarget.outcomes.length > 0
+          ? resolveTarget.outcomes
           : ["YES", "NO"]
         ).map((outcome) => ({
           value: String(outcome).toUpperCase(),
@@ -686,10 +691,65 @@ async function renderAdminPanel() {
 
   const participants = document.getElementById("adminParticipants");
   if (participants) {
+    participants.innerHTML = "<div class='text-xs text-slate-500'>読み込み中...</div>";
+  }
+
+  try {
+    const key = getAdminKey();
+    const stats = await getAdminEventStats(targetEvent.id, key);
+    if (!participants) return;
+
+    const summary = stats?.summary || {};
+    const eventInfo = stats?.event || {};
+    const payoutRows = Array.isArray(stats?.payouts) ? stats.payouts : [];
+    const people = Array.isArray(stats?.participants) ? stats.participants : [];
+
+    const payoutMarkup = payoutRows.length
+      ? `
+        <div class="mt-3 text-xs text-slate-400">配当（${eventInfo.result || "-"}）</div>
+        <div class="mt-2 space-y-1 text-xs">
+          ${payoutRows
+            .map(
+              (p) => `
+                <div class="flex items-center justify-between bg-slate-900/40 border border-slate-700 rounded-lg px-2 py-1">
+                  <span>${p.name}</span>
+                  <span class="text-emerald-300">${p.paidPoints.toLocaleString()} pt</span>
+                </div>
+              `
+            )
+            .join("")}
+        </div>`
+      : "";
+
     participants.innerHTML = `
-      <div class="text-xs text-slate-400">Trades: ${ev?.stats?.trades ?? 0}</div>
-      <div class="text-xs text-slate-400">Open orders: ${ev?.stats?.openOrders ?? 0}</div>
+      <div class="text-xs text-slate-400">参加者: ${summary.participantsCount ?? 0}人</div>
+      <div class="text-xs text-slate-400">Trades: ${summary.tradesCount ?? 0} / Open orders: ${summary.openOrdersCount ?? 0}</div>
+      <div class="text-xs text-slate-400">集計ポイント: ${(summary.collateralPoints ?? 0).toFixed(2)} pt</div>
+      <div class="text-xs text-slate-400">YES票: ${summary.yesShares ?? 0} / NO票: ${summary.noShares ?? 0}</div>
+      ${
+        eventInfo.status === "resolved"
+          ? `<div class="text-xs text-emerald-300">結果: ${eventInfo.result || "-"}</div>`
+          : ""
+      }
+      <div class="mt-3 text-xs text-slate-400">参加者内訳</div>
+      <div class="mt-2 space-y-1 text-xs">
+        ${people
+          .map(
+            (p) => `
+              <div class="flex items-center justify-between bg-slate-900/40 border border-slate-700 rounded-lg px-2 py-1">
+                <span>${p.name}</span>
+                <span class="text-slate-400">YES ${p.yesQty} / NO ${p.noQty} • orders ${p.openOrders} • trades ${p.trades}</span>
+              </div>
+            `
+          )
+          .join("") || "<div class='text-slate-500'>参加者がいません</div>"}
+      </div>
+      ${payoutMarkup}
     `;
+  } catch (e) {
+    if (participants) {
+      participants.innerHTML = `<div class="text-xs text-amber-200">${String(e?.message || e)}</div>`;
+    }
   }
 }
 
