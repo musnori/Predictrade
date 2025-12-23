@@ -89,6 +89,13 @@ export async function deleteEvent(eventId, adminKey) {
   });
 }
 
+export async function getAdminEventStats(eventId, adminKey) {
+  const url = adminKey
+    ? `/api/events/${encodeURIComponent(eventId)}/admin?key=${encodeURIComponent(adminKey)}`
+    : `/api/events/${encodeURIComponent(eventId)}/admin`;
+  return api(url);
+}
+
 export function getCategoryName(category) {
   const map = {
     sports: "スポーツ",
