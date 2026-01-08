@@ -6,10 +6,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: "index.html",
-        create: "create.html",
         dashboard: "dashboard.html",
         event: "event.html",
-        history: "history.html", // ← これ追加
       },
     },
   },
