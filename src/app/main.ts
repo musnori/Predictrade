@@ -55,7 +55,7 @@ function renderUserInfo(): void {
   const pointsEl = document.getElementById('userPoints');
 
   if (nameEl) {
-    nameEl.textContent = user.displayName || 'Anonymous';
+    nameEl.textContent = user.displayName || '匿名';
   }
 
   if (pointsEl) {
@@ -113,8 +113,8 @@ function renderMarkets(): void {
   if (markets.length === 0) {
     grid.innerHTML = `
       <div class="col-span-full text-center py-12 text-slate-400">
-        <p class="text-lg">No markets found</p>
-        <p class="text-sm mt-2">Check back later for new prediction markets</p>
+        <p class="text-lg">マーケットがありません</p>
+        <p class="text-sm mt-2">後で新しい予測市場を確認してください</p>
       </div>
     `;
     return;
@@ -180,7 +180,7 @@ function renderMarketCard(market: Market): string {
 
       <div class="flex items-center justify-between text-sm text-slate-400 pt-3 border-t border-slate-700/50">
         <span>${timeRemaining}</span>
-        <span>Vol: ${volume}</span>
+        <span>取引量: ${volume}</span>
       </div>
     </div>
   `;
@@ -189,15 +189,15 @@ function renderMarketCard(market: Market): string {
 function getStatusBadge(market: Market): string {
   switch (market.status) {
     case 'OPEN':
-      return '<span class="px-2 py-1 rounded-full text-xs bg-emerald-500/20 text-emerald-300">Open</span>';
+      return '<span class="px-2 py-1 rounded-full text-xs bg-emerald-500/20 text-emerald-300">オープン</span>';
     case 'CLOSED':
-      return '<span class="px-2 py-1 rounded-full text-xs bg-amber-500/20 text-amber-300">Closed</span>';
+      return '<span class="px-2 py-1 rounded-full text-xs bg-amber-500/20 text-amber-300">クローズ</span>';
     case 'RESOLUTION_PROPOSED':
-      return '<span class="px-2 py-1 rounded-full text-xs bg-purple-500/20 text-purple-300">Pending Resolution</span>';
+      return '<span class="px-2 py-1 rounded-full text-xs bg-purple-500/20 text-purple-300">解決待ち</span>';
     case 'DISPUTED':
-      return '<span class="px-2 py-1 rounded-full text-xs bg-red-500/20 text-red-300">Disputed</span>';
+      return '<span class="px-2 py-1 rounded-full text-xs bg-red-500/20 text-red-300">異議あり</span>';
     case 'RESOLVED':
-      return '<span class="px-2 py-1 rounded-full text-xs bg-slate-500/20 text-slate-300">Resolved</span>';
+      return '<span class="px-2 py-1 rounded-full text-xs bg-slate-500/20 text-slate-300">解決済み</span>';
     default:
       return '';
   }

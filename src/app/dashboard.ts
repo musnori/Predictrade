@@ -50,7 +50,7 @@ function renderUserInfo(): void {
   const nameEl = document.getElementById('userName');
   const pointsEl = document.getElementById('userPoints');
 
-  if (nameEl) nameEl.textContent = user.displayName || 'Anonymous';
+  if (nameEl) nameEl.textContent = user.displayName || '匿名';
   if (pointsEl) pointsEl.textContent = `$${user.cashBalance.toFixed(2)}`;
 }
 
@@ -84,38 +84,38 @@ function renderStats(): void {
     container.innerHTML = `
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div class="card rounded-2xl p-5">
-          <div class="text-sm text-slate-400">Cash Balance</div>
+          <div class="text-sm text-slate-400">現金残高</div>
           <div class="mt-2 text-2xl font-bold text-emerald-400">${formatUSD(user.cashBalance)}</div>
         </div>
         <div class="card rounded-2xl p-5">
-          <div class="text-sm text-slate-400">Locked in Orders</div>
+          <div class="text-sm text-slate-400">注文拘束額</div>
           <div class="mt-2 text-2xl font-bold text-amber-400">${formatUSD(user.lockedCash)}</div>
         </div>
         <div class="card rounded-2xl p-5">
-          <div class="text-sm text-slate-400">Positions Value</div>
+          <div class="text-sm text-slate-400">ポジション評価額</div>
           <div class="mt-2 text-2xl font-bold text-sky-400">${formatUSD(positionsValue)}</div>
         </div>
         <div class="card rounded-2xl p-5">
-          <div class="text-sm text-slate-400">Total Equity</div>
+          <div class="text-sm text-slate-400">総資産</div>
           <div class="mt-2 text-2xl font-bold">${formatUSD(totalEquity)}</div>
         </div>
       </div>
 
       <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
         <div class="card rounded-2xl p-5">
-          <div class="text-sm text-slate-400">Unrealized P&L</div>
+          <div class="text-sm text-slate-400">含み損益</div>
           <div class="mt-2 text-xl font-bold ${unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}">
             ${unrealizedPnl >= 0 ? '+' : ''}${formatUSD(unrealizedPnl)}
           </div>
         </div>
         <div class="card rounded-2xl p-5">
-          <div class="text-sm text-slate-400">Realized P&L</div>
+          <div class="text-sm text-slate-400">確定損益</div>
           <div class="mt-2 text-xl font-bold ${user.realizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}">
             ${user.realizedPnl >= 0 ? '+' : ''}${formatUSD(user.realizedPnl)}
           </div>
         </div>
         <div class="card rounded-2xl p-5">
-          <div class="text-sm text-slate-400">Total Trades</div>
+          <div class="text-sm text-slate-400">総取引数</div>
           <div class="mt-2 text-xl font-bold">${trades.length}</div>
         </div>
       </div>
@@ -134,9 +134,9 @@ function renderPositions(): void {
   if (positions.length === 0) {
     container.innerHTML = `
       <div class="card rounded-2xl p-6">
-        <h3 class="text-lg font-semibold mb-4">My Positions</h3>
-        <p class="text-slate-400">No open positions</p>
-        <a href="index.html" class="mt-4 inline-block text-emerald-400 hover:underline">Browse markets</a>
+        <h3 class="text-lg font-semibold mb-4">保有ポジション</h3>
+        <p class="text-slate-400">オープンポジションなし</p>
+        <a href="index.html" class="mt-4 inline-block text-emerald-400 hover:underline">マーケットを見る</a>
       </div>
     `;
     return;
@@ -150,7 +150,7 @@ function renderPositions(): void {
     positionsByMarket.set(pos.marketId, existing);
   }
 
-  let html = '<div class="card rounded-2xl p-6"><h3 class="text-lg font-semibold mb-4">My Positions</h3>';
+  let html = '<div class="card rounded-2xl p-6"><h3 class="text-lg font-semibold mb-4">保有ポジション</h3>';
   html += '<div class="space-y-4">';
 
   for (const [marketId, marketPositions] of positionsByMarket) {
@@ -179,10 +179,10 @@ function renderPositions(): void {
 
       html += `
         <div class="p-3 rounded-lg bg-slate-900/50">
-          <div class="text-sm text-slate-300">${outcome?.label || 'Unknown'}</div>
-          <div class="mt-1 font-semibold">${pos.shares} shares</div>
+          <div class="text-sm text-slate-300">${outcome?.label || '不明'}</div>
+          <div class="mt-1 font-semibold">${pos.shares}株</div>
           <div class="text-xs text-slate-400">
-            Avg: ${Math.round(pos.avgCost * 100)}¢
+            平均: ${Math.round(pos.avgCost * 100)}¢
           </div>
           <div class="text-xs ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}">
             ${pnl >= 0 ? '+' : ''}${formatUSD(pnl)} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(1)}%)
@@ -212,14 +212,14 @@ function renderOpenOrders(): void {
   if (orders.length === 0) {
     container.innerHTML = `
       <div class="card rounded-2xl p-6">
-        <h3 class="text-lg font-semibold mb-4">Open Orders</h3>
-        <p class="text-slate-400">No open orders</p>
+        <h3 class="text-lg font-semibold mb-4">オープン注文</h3>
+        <p class="text-slate-400">オープン注文なし</p>
       </div>
     `;
     return;
   }
 
-  let html = '<div class="card rounded-2xl p-6"><h3 class="text-lg font-semibold mb-4">Open Orders</h3>';
+  let html = '<div class="card rounded-2xl p-6"><h3 class="text-lg font-semibold mb-4">オープン注文</h3>';
   html += '<div class="space-y-3">';
 
   for (const order of orders) {
@@ -233,19 +233,19 @@ function renderOpenOrders(): void {
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">
             <span class="${sideColor} font-semibold">${order.side}</span>
-            <span class="text-slate-300">${outcome?.label || 'Unknown'}</span>
+            <span class="text-slate-300">${outcome?.label || '不明'}</span>
           </div>
           <div class="text-sm text-slate-400 mt-1 truncate">
-            ${market?.question || 'Unknown market'}
+            ${market?.question || '不明なマーケット'}
           </div>
           <div class="text-xs text-slate-500 mt-1">
             ${order.remaining}/${order.quantity} @ ${Math.round(order.price * 100)}¢
-            ${lockedAmount > 0 ? `• Locked: ${formatUSD(lockedAmount)}` : ''}
+            ${lockedAmount > 0 ? `• 拘束: ${formatUSD(lockedAmount)}` : ''}
           </div>
         </div>
         <button class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm shrink-0"
                 data-cancel-order="${order.id}">
-          Cancel
+          キャンセル
         </button>
       </div>
     `;
@@ -262,7 +262,7 @@ function renderOpenOrders(): void {
       if (result.success) {
         renderAll();
       } else {
-        alert(result.error || 'Failed to cancel order');
+        alert(result.error || '注文のキャンセルに失敗しました');
       }
     });
   });
@@ -279,14 +279,14 @@ function renderTradeHistory(): void {
   if (trades.length === 0) {
     container.innerHTML = `
       <div class="card rounded-2xl p-6">
-        <h3 class="text-lg font-semibold mb-4">Trade History</h3>
-        <p class="text-slate-400">No trades yet</p>
+        <h3 class="text-lg font-semibold mb-4">取引履歴</h3>
+        <p class="text-slate-400">取引がありません</p>
       </div>
     `;
     return;
   }
 
-  let html = '<div class="card rounded-2xl p-6"><h3 class="text-lg font-semibold mb-4">Trade History</h3>';
+  let html = '<div class="card rounded-2xl p-6"><h3 class="text-lg font-semibold mb-4">取引履歴</h3>';
   html += '<div class="space-y-2">';
 
   for (const trade of trades) {
@@ -327,14 +327,14 @@ function renderTradeHistory(): void {
 
 function setupEventListeners(): void {
   document.getElementById('resetWalletBtn')?.addEventListener('click', () => {
-    if (confirm('Reset your demo wallet to $1,000? This will not affect your positions.')) {
+    if (confirm('デモウォレットを$1,000にリセットしますか？ポジションには影響しません。')) {
       storage.resetWallet();
       renderAll();
     }
   });
 
   document.getElementById('clearAllBtn')?.addEventListener('click', () => {
-    if (confirm('Clear ALL data and start fresh? This cannot be undone.')) {
+    if (confirm('すべてのデータを削除して最初からやり直しますか？この操作は取り消せません。')) {
       storage.clearAll();
       initializeDemoMarkets();
       renderAll();

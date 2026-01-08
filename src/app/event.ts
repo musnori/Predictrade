@@ -55,13 +55,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const marketId = urlParams.get('id');
 
   if (!marketId) {
-    showError('Market ID not provided');
+    showError('マーケットIDが指定されていません');
     return;
   }
 
   currentMarket = storage.getMarket(marketId);
   if (!currentMarket) {
-    showError('Market not found');
+    showError('マーケットが見つかりません');
     return;
   }
 
@@ -90,7 +90,7 @@ function showError(message: string): void {
     main.innerHTML = `
       <div class="max-w-xl mx-auto text-center py-20">
         <p class="text-xl text-red-400">${message}</p>
-        <a href="index.html" class="mt-4 inline-block text-emerald-400 hover:underline">Back to markets</a>
+        <a href="index.html" class="mt-4 inline-block text-emerald-400 hover:underline">マーケット一覧へ戻る</a>
       </div>
     `;
   }
@@ -118,7 +118,7 @@ function renderUserInfo(): void {
   const nameEl = document.getElementById('userName');
   const pointsEl = document.getElementById('userPoints');
 
-  if (nameEl) nameEl.textContent = user.displayName || 'Anonymous';
+  if (nameEl) nameEl.textContent = user.displayName || '匿名';
   if (pointsEl) pointsEl.textContent = `$${user.cashBalance.toFixed(2)}`;
 }
 
@@ -141,7 +141,7 @@ function renderMarketInfo(): void {
   const metaEl = document.getElementById('eventMeta');
   if (metaEl) {
     const timeStr = formatTimeRemaining(currentMarket.endTime);
-    metaEl.textContent = `${currentMarket.status} • ${timeStr} remaining`;
+    metaEl.textContent = `${currentMarket.status} • 残り ${timeStr}`;
   }
 
   // Market time
@@ -162,7 +162,7 @@ function renderMarketInfo(): void {
   if (resolvedBadge) {
     if (currentMarket.status === 'RESOLVED') {
       const winner = currentMarket.outcomes.find((o) => o.id === currentMarket?.resolvedOutcomeId);
-      resolvedBadge.textContent = `Resolved: ${winner?.label || 'Unknown'}`;
+      resolvedBadge.textContent = `確定: ${winner?.label || '不明'}`;
       resolvedBadge.classList.remove('hidden');
     } else {
       resolvedBadge.classList.add('hidden');
@@ -210,7 +210,7 @@ function renderMarketInfo(): void {
       if (bestBidEl) bestBidEl.textContent = book.bestBid ? `${Math.round(book.bestBid * 100)}¢` : '-';
       if (bestAskEl) bestAskEl.textContent = book.bestAsk ? `${Math.round(book.bestAsk * 100)}¢` : '-';
       if (spreadEl) spreadEl.textContent = book.spread ? `${Math.round(book.spread * 100)}¢` : '-';
-      if (sourceEl) sourceEl.textContent = book.midPrice ? 'Mid' : (book.lastTradePrice ? 'Last' : 'Initial');
+      if (sourceEl) sourceEl.textContent = book.midPrice ? '仲値' : (book.lastTradePrice ? '直近取引' : '初期値');
     }
   }
 }
@@ -235,7 +235,7 @@ function renderOutcomes(): void {
         <div>
           <button class="w-full py-2 px-3 rounded-lg bg-emerald-600/20 border border-emerald-600/40 text-emerald-200 text-sm hover:bg-emerald-600/30"
                   data-action="buy" data-outcome="${outcome.id}">
-            Buy ${outcome.label}
+            ${outcome.label}を購入
           </button>
         </div>
         <div class="text-center">
@@ -245,7 +245,7 @@ function renderOutcomes(): void {
         <div class="text-right">
           <button class="w-full py-2 px-3 rounded-lg bg-red-600/20 border border-red-600/40 text-red-200 text-sm hover:bg-red-600/30"
                   data-action="sell" data-outcome="${outcome.id}">
-            Sell ${outcome.label}
+            ${outcome.label}を売却
           </button>
         </div>
       </div>
@@ -292,7 +292,7 @@ function renderOrderBook(): void {
     const totalOrders = storage.getOrders({ marketId: currentMarket.id }).filter(
       (o) => o.status === 'OPEN' || o.status === 'PARTIAL'
     ).length;
-    statusEl.textContent = `${totalOrders} open orders`;
+    statusEl.textContent = `${totalOrders}件のオープン注文`;
   }
 }
 
@@ -301,7 +301,7 @@ function renderOrderBookColumn(elementId: string, levels: { price: number; quant
   if (!el) return;
 
   if (levels.length === 0) {
-    el.innerHTML = '<div class="text-slate-500 text-xs">No orders</div>';
+    el.innerHTML = '<div class="text-slate-500 text-xs">注文なし</div>';
     return;
   }
 
@@ -345,7 +345,7 @@ function renderPositions(): void {
     }
 
     const valueEl = document.getElementById('positionsValue');
-    if (valueEl) valueEl.textContent = `Value: ${formatUSD(totalValue)}`;
+    if (valueEl) valueEl.textContent = `評価額: ${formatUSD(totalValue)}`;
   }
 }
 
@@ -362,14 +362,14 @@ function renderMyOrders(): void {
 
   if (orders.length === 0) {
     container.innerHTML = `
-      <div class="text-slate-200 font-semibold">My Orders</div>
-      <div class="mt-3 text-sm text-slate-400">No open orders</div>
+      <div class="text-slate-200 font-semibold">マイオーダー</div>
+      <div class="mt-3 text-sm text-slate-400">オープン注文なし</div>
     `;
     return;
   }
 
   container.innerHTML = `
-    <div class="text-slate-200 font-semibold mb-3">My Orders</div>
+    <div class="text-slate-200 font-semibold mb-3">マイオーダー</div>
     <div class="space-y-2">
       ${orders.map((order) => {
         const outcome = currentMarket?.outcomes.find((o) => o.id === order.outcomeId);
@@ -378,14 +378,14 @@ function renderMyOrders(): void {
           <div class="flex items-center justify-between p-3 rounded-lg bg-slate-800/50">
             <div>
               <span class="${sideColor} font-semibold">${order.side}</span>
-              <span class="text-slate-300 ml-2">${outcome?.label || 'Unknown'}</span>
+              <span class="text-slate-300 ml-2">${outcome?.label || '不明'}</span>
               <div class="text-xs text-slate-400">
                 ${order.remaining}/${order.quantity} @ ${Math.round(order.price * 100)}¢
               </div>
             </div>
             <button class="px-3 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm"
                     data-cancel-order="${order.id}">
-              Cancel
+              キャンセル
             </button>
           </div>
         `;
@@ -401,7 +401,7 @@ function renderMyOrders(): void {
       if (result.success) {
         renderAll();
       } else {
-        alert(result.error || 'Failed to cancel order');
+        alert(result.error || '注文のキャンセルに失敗しました');
       }
     });
   });
@@ -415,7 +415,7 @@ function renderRecentTrades(): void {
   if (!container) return;
 
   if (trades.length === 0) {
-    container.innerHTML = '<div class="text-slate-400">No trades yet</div>';
+    container.innerHTML = '<div class="text-slate-400">取引がありません</div>';
     return;
   }
 
@@ -476,30 +476,30 @@ function renderResolutionPanel(): void {
     if (rulesUpdates) {
       rulesUpdates.innerHTML = `
         <div class="p-4 rounded-lg bg-purple-900/30 border border-purple-500/40">
-          <div class="font-semibold text-purple-200">Resolution Proposed</div>
+          <div class="font-semibold text-purple-200">確定が提案されました</div>
           <div class="mt-2 text-sm">
-            Proposed outcome: <strong>${proposedOutcome?.label || 'Unknown'}</strong>
+            提案された結果: <strong>${proposedOutcome?.label || '不明'}</strong>
           </div>
           <div class="text-sm text-slate-400">
-            Challenge period ends in ${timeRemaining} minutes
+            異議申立期間は残り${timeRemaining}分
           </div>
           <button class="mt-3 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-sm"
                   id="disputeBtn">
-            Dispute Resolution
+            異議を申し立てる
           </button>
         </div>
       `;
 
       document.getElementById('disputeBtn')?.addEventListener('click', () => {
-        const reason = prompt('Enter dispute reason:');
+        const reason = prompt('異議の理由を入力してください:');
         if (reason && currentMarket) {
           const result = disputeResolution(currentMarket.id, reason);
           if (result.success) {
-            alert('Dispute submitted');
+            alert('異議が提出されました');
             currentMarket = storage.getMarket(currentMarket.id) || currentMarket;
             renderAll();
           } else {
-            alert(result.error || 'Failed to dispute');
+            alert(result.error || '異議の申立てに失敗しました');
           }
         }
       });
@@ -581,9 +581,9 @@ function updateOrderSheet(): void {
 
   if (payoutEl) {
     if (orderSide === 'BUY') {
-      payoutEl.textContent = `Cost: $${total.toFixed(2)} | Return if correct: $${potentialReturn.toFixed(2)}`;
+      payoutEl.textContent = `コスト: $${total.toFixed(2)} | 的中時リターン: $${potentialReturn.toFixed(2)}`;
     } else {
-      payoutEl.textContent = `Receive: $${total.toFixed(2)}`;
+      payoutEl.textContent = `受取額: $${total.toFixed(2)}`;
     }
   }
 
@@ -591,8 +591,8 @@ function updateOrderSheet(): void {
   const tradeBtn = document.getElementById('tradeBtn');
   if (tradeBtn) {
     tradeBtn.textContent = orderSide === 'BUY'
-      ? `Buy ${selectedOutcome.label} for $${total.toFixed(2)}`
-      : `Sell ${selectedOutcome.label} for $${total.toFixed(2)}`;
+      ? `${selectedOutcome.label}を$${total.toFixed(2)}で購入`
+      : `${selectedOutcome.label}を$${total.toFixed(2)}で売却`;
   }
 }
 
@@ -684,12 +684,12 @@ function setupEventListeners(): void {
     if (!currentMarket || !selectedOutcome) return;
 
     if (!isMarketTradeable(currentMarket)) {
-      showSheetMessage('Market is not open for trading');
+      showSheetMessage('このマーケットは取引できません');
       return;
     }
 
     if (orderQuantity <= 0) {
-      showSheetMessage('Please enter a valid quantity');
+      showSheetMessage('有効な数量を入力してください');
       return;
     }
 
@@ -707,11 +707,11 @@ function setupEventListeners(): void {
 
       let message = '';
       if (status === 'FILLED') {
-        message = `Order filled! ${tradesCount} trade(s) executed.`;
+        message = `注文約定！${tradesCount}件の取引が成立しました。`;
       } else if (status === 'PARTIAL') {
-        message = `Order partially filled. ${result.order?.remaining} shares remaining.`;
+        message = `注文一部約定。残り${result.order?.remaining}株。`;
       } else {
-        message = 'Order placed in orderbook.';
+        message = '注文がオーダーブックに追加されました。';
       }
 
       showSheetMessage(message, 'success');
@@ -721,7 +721,7 @@ function setupEventListeners(): void {
       // Close sheet after short delay
       setTimeout(closeOrderSheet, 1500);
     } else {
-      showSheetMessage(result.error || 'Failed to place order');
+      showSheetMessage(result.error || '注文に失敗しました');
     }
   });
 
@@ -732,7 +732,7 @@ function setupEventListeners(): void {
       storage.setAdminMode(true);
       renderAll();
     } else {
-      showAdminMessage('Invalid admin key');
+      showAdminMessage('管理者キーが無効です');
     }
   });
 
@@ -747,31 +747,31 @@ function setupEventListeners(): void {
     const outcomeId = select?.value;
 
     if (!outcomeId) {
-      showAdminMessage('Please select an outcome');
+      showAdminMessage('結果を選択してください');
       return;
     }
 
     // First propose
     const proposeResult = proposeResolution(currentMarket.id, outcomeId);
     if (!proposeResult.success) {
-      showAdminMessage(proposeResult.error || 'Failed to propose resolution');
+      showAdminMessage(proposeResult.error || '確定の提案に失敗しました');
       return;
     }
 
     // For demo, immediately finalize (skip challenge period)
     const finalizeResult = finalizeResolution(currentMarket.id, outcomeId);
     if (finalizeResult.success) {
-      showAdminMessage(`Market resolved! ${finalizeResult.payouts?.length || 0} users received payouts.`, 'success');
+      showAdminMessage(`マーケットが確定しました！${finalizeResult.payouts?.length || 0}名のユーザーに配当されました。`, 'success');
       currentMarket = storage.getMarket(currentMarket.id) || currentMarket;
       renderAll();
     } else {
-      showAdminMessage(finalizeResult.error || 'Failed to finalize resolution');
+      showAdminMessage(finalizeResult.error || '確定に失敗しました');
     }
   });
 
   document.getElementById('adminDeleteEventBtn')?.addEventListener('click', () => {
     if (!currentMarket) return;
-    if (confirm('Are you sure you want to delete this market?')) {
+    if (confirm('このマーケットを削除してもよろしいですか？')) {
       storage.deleteMarket(currentMarket.id);
       window.location.href = 'index.html';
     }
@@ -801,10 +801,10 @@ function showAdminMessage(message: string, type: 'error' | 'success' = 'error'):
 function getTimeAgo(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
 
-  if (seconds < 60) return 'just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
+  if (seconds < 60) return 'たった今';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}分前`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}時間前`;
+  return `${Math.floor(seconds / 86400)}日前`;
 }
 
 // Export for debugging

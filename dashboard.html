@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover" />
-  <title>Portfolio - PredicTrade</title>
+  <title>ポートフォリオ - PredicTrade</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
@@ -32,8 +32,8 @@
       </div>
 
       <nav class="hidden md:flex space-x-8">
-        <a href="index.html" class="nav-link text-slate-300 hover:text-emerald-400">Markets</a>
-        <a href="dashboard.html" class="nav-link text-emerald-400 font-medium">Portfolio</a>
+        <a href="index.html" class="nav-link text-slate-300 hover:text-emerald-400">マーケット</a>
+        <a href="dashboard.html" class="nav-link text-emerald-400 font-medium">ポートフォリオ</a>
       </nav>
 
       <div class="relative shrink-0">
@@ -45,7 +45,7 @@
         >
           <div class="text-slate-200 font-semibold" id="userName">-</div>
           <div>
-            <span class="text-slate-400">Balance:</span>
+            <span class="text-slate-400">残高:</span>
             <span class="text-emerald-400 font-bold" id="userPoints">-</span>
           </div>
         </button>
@@ -55,8 +55,8 @@
           class="hidden absolute right-0 mt-2 w-44 rounded-xl bg-slate-900/95 border border-slate-700 shadow-2xl backdrop-blur z-[999]"
           role="menu"
         >
-          <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">Markets</a>
-          <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">Portfolio</a>
+          <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">マーケット</a>
+          <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">ポートフォリオ</a>
         </div>
       </div>
     </div>
@@ -65,19 +65,19 @@
 
 <!-- Demo Banner -->
 <div class="bg-amber-600/20 border-b border-amber-600/40 px-4 py-2 text-center text-sm text-amber-200">
-  This is a demo. No real money involved. Prediction shares are for educational purposes only.
+  これはデモです。実際のお金は使用しません。予測シェアは教育目的のみです。
 </div>
 
 <main class="py-8 sm:py-10">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="flex items-center justify-between mb-6">
-      <h2 class="text-2xl sm:text-3xl font-bold"><span class="gradient-text">Portfolio</span></h2>
+      <h2 class="text-2xl sm:text-3xl font-bold"><span class="gradient-text">ポートフォリオ</span></h2>
       <div class="flex gap-2">
         <button id="resetWalletBtn" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">
-          Reset Wallet
+          ウォレットリセット
         </button>
         <button id="clearAllBtn" class="px-4 py-2 rounded-lg bg-red-600/20 border border-red-600/40 hover:bg-red-600/30 text-sm text-red-200">
-          Clear All Data
+          全データ削除
         </button>
       </div>
     </div>

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover" />
-  <title>PredicTrade - Prediction Markets</title>
+  <title>PredicTrade - 予測市場</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
@@ -42,8 +42,8 @@
       </div>
 
       <nav class="hidden md:flex space-x-8">
-        <a href="index.html" class="nav-link text-emerald-400 font-medium">Markets</a>
-        <a href="dashboard.html" class="nav-link text-slate-300 hover:text-emerald-400">Portfolio</a>
+        <a href="index.html" class="nav-link text-emerald-400 font-medium">マーケット</a>
+        <a href="dashboard.html" class="nav-link text-slate-300 hover:text-emerald-400">ポートフォリオ</a>
       </nav>
 
       <div class="relative shrink-0">
@@ -55,7 +55,7 @@
         >
           <div class="text-slate-200 font-semibold" id="userName">-</div>
           <div>
-            <span class="text-slate-400">Balance:</span>
+            <span class="text-slate-400">残高:</span>
             <span class="text-emerald-400 font-bold" id="userPoints">-</span>
           </div>
         </button>
@@ -65,8 +65,8 @@
           class="hidden absolute right-0 mt-2 w-44 rounded-xl bg-slate-900/95 border border-slate-700 shadow-2xl backdrop-blur z-[999]"
           role="menu"
         >
-          <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">Markets</a>
-          <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">Portfolio</a>
+          <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">マーケット</a>
+          <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">ポートフォリオ</a>
         </div>
       </div>
     </div>
@@ -75,30 +75,30 @@
 
 <!-- Demo Banner -->
 <div class="bg-amber-600/20 border-b border-amber-600/40 px-4 py-2 text-center text-sm text-amber-200">
-  This is a demo. No real money involved. Prediction shares are for educational purposes only.
+  これはデモです。実際のお金は使用しません。予測シェアは教育目的のみです。
 </div>
 
 <main class="py-8 sm:py-10">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="mb-6 flex items-end justify-between gap-4 flex-wrap">
       <div class="min-w-0">
-        <h2 class="text-2xl sm:text-3xl font-bold"><span class="gradient-text">Prediction Markets</span></h2>
-        <p class="text-slate-300 text-sm sm:text-base">Trade on the outcome of future events</p>
+        <h2 class="text-2xl sm:text-3xl font-bold"><span class="gradient-text">予測市場</span></h2>
+        <p class="text-slate-300 text-sm sm:text-base">将来のイベントの結果を予測して取引</p>
       </div>
 
       <div class="flex gap-3 w-full sm:w-auto">
         <select id="filterCategory" class="w-1/2 sm:w-auto bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100">
-          <option value="">All Categories</option>
-          <option value="crypto">Crypto</option>
-          <option value="politics">Politics</option>
-          <option value="finance">Finance</option>
-          <option value="sports">Sports</option>
-          <option value="tech">Tech</option>
-          <option value="entertainment">Entertainment</option>
+          <option value="">すべてのカテゴリー</option>
+          <option value="crypto">暗号通貨</option>
+          <option value="politics">政治</option>
+          <option value="finance">金融</option>
+          <option value="sports">スポーツ</option>
+          <option value="tech">テクノロジー</option>
+          <option value="entertainment">エンタメ</option>
         </select>
         <select id="sortBy" class="w-1/2 sm:w-auto bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100">
-          <option value="soon">Ending Soon</option>
-          <option value="popular">Most Volume</option>
+          <option value="soon">まもなく終了</option>
+          <option value="popular">取引量順</option>
         </select>
       </div>
     </div>
