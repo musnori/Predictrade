@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PredicTrade - Market</title>
+    <title>PredicTrade - マーケット</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       body {
@@ -33,13 +33,13 @@
           <div class="w-10 h-10 rounded-xl bg-emerald-500/90 flex items-center justify-center font-bold text-slate-900">P</div>
           <div>
             <div class="font-semibold text-lg leading-tight">PredicTrade</div>
-            <div class="text-xs text-slate-400">Prediction Market</div>
+            <div class="text-xs text-slate-400">予測市場</div>
           </div>
         </div>
 
         <nav class="hidden md:flex items-center gap-6 text-sm text-slate-300">
-          <a href="index.html" class="hover:text-white">Markets</a>
-          <a href="dashboard.html" class="hover:text-white">Portfolio</a>
+          <a href="index.html" class="hover:text-white">マーケット</a>
+          <a href="dashboard.html" class="hover:text-white">ポートフォリオ</a>
         </nav>
 
         <div class="relative shrink-0 text-sm">
@@ -51,7 +51,7 @@
           >
             <div class="text-slate-200 font-semibold" id="userName">-</div>
             <div class="text-slate-300">
-              <span class="text-slate-400">Balance:</span>
+              <span class="text-slate-400">残高:</span>
               <span id="userPoints" class="text-emerald-400 font-bold">-</span>
             </div>
           </button>
@@ -61,8 +61,8 @@
             class="hidden absolute right-0 mt-2 w-44 rounded-xl bg-slate-950/95 border border-slate-800 shadow-2xl backdrop-blur z-[999]"
             role="menu"
           >
-            <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">Markets</a>
-            <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">Portfolio</a>
+            <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">マーケット</a>
+            <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">ポートフォリオ</a>
           </div>
         </div>
       </div>
@@ -70,13 +70,13 @@
 
     <!-- Demo Banner -->
     <div class="bg-amber-600/20 border-b border-amber-600/40 px-4 py-2 text-center text-sm text-amber-200">
-      This is a demo. No real money involved. Prediction shares are for educational purposes only.
+      これはデモです。実際のお金は使用しません。予測シェアは教育目的のみです。
     </div>
 
     <main class="max-w-6xl mx-auto px-4 py-6">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <button id="backBtn" class="px-4 py-2 rounded-xl pill hover:bg-slate-900/80">
-          ← Back
+          ← 戻る
         </button>
         <div id="resolvedBadge" class="hidden px-3 py-2 rounded-xl bg-emerald-600/20 border border-emerald-600/40 text-emerald-200 text-sm"></div>
       </div>
@@ -93,41 +93,41 @@
 
             <div class="mt-6 grid sm:grid-cols-3 gap-3 text-sm">
               <div class="pill rounded-2xl p-4">
-                <div class="text-slate-400">Yes price</div>
+                <div class="text-slate-400">YES 価格</div>
                 <div class="mt-2 text-2xl font-bold" id="marketPriceYes">-</div>
               </div>
               <div class="pill rounded-2xl p-4">
-                <div class="text-slate-400">No price</div>
+                <div class="text-slate-400">NO 価格</div>
                 <div class="mt-2 text-2xl font-bold" id="marketPriceNo">-</div>
               </div>
               <div class="pill rounded-2xl p-4">
-                <div class="text-slate-400">Time remaining</div>
+                <div class="text-slate-400">残り時間</div>
                 <div class="mt-2 text-2xl font-bold" id="marketTime">-</div>
               </div>
             </div>
 
             <div class="mt-4 grid sm:grid-cols-4 gap-3 text-xs">
               <div class="pill rounded-2xl p-3">
-                <div class="text-slate-400">Best bid (YES)</div>
+                <div class="text-slate-400">最高買値（YES）</div>
                 <div class="mt-1 font-semibold" id="bestBidYes">-</div>
               </div>
               <div class="pill rounded-2xl p-3">
-                <div class="text-slate-400">Best ask (YES)</div>
+                <div class="text-slate-400">最安売値（YES）</div>
                 <div class="mt-1 font-semibold" id="bestAskYes">-</div>
               </div>
               <div class="pill rounded-2xl p-3">
-                <div class="text-slate-400">Spread</div>
+                <div class="text-slate-400">スプレッド</div>
                 <div class="mt-1 font-semibold" id="marketSpread">-</div>
               </div>
               <div class="pill rounded-2xl p-3">
-                <div class="text-slate-400">Display source</div>
+                <div class="text-slate-400">表示ソース</div>
                 <div class="mt-1 font-semibold" id="displaySource">-</div>
               </div>
             </div>
 
             <div class="mt-5">
               <div class="flex items-center justify-between text-xs text-slate-400">
-                <span>Probability split</span>
+                <span>確率分布</span>
                 <span id="marketSplitText">-</span>
               </div>
               <div class="mt-2 h-3 rounded-full bg-slate-800 overflow-hidden">
@@ -146,8 +146,8 @@
 
           <section class="card rounded-3xl overflow-hidden">
             <div class="px-6 py-4 border-b border-slate-800/80">
-              <div class="text-slate-200 font-semibold">Market ladder</div>
-              <div class="text-xs text-slate-400">Polymarket-style price ladder</div>
+              <div class="text-slate-200 font-semibold">マーケットラダー</div>
+              <div class="text-xs text-slate-400">価格ラダー</div>
             </div>
             <div id="ladderWrap" class="bg-slate-900/40">
               <div class="grid grid-cols-3 gap-2 px-6 py-3 text-xs text-slate-400 border-b border-slate-800/80">
@@ -160,34 +160,34 @@
           <section class="card rounded-3xl p-6" id="positionsPanel">
             <div class="flex items-center justify-between">
               <div>
-                <div class="text-slate-200 font-semibold">My positions</div>
+                <div class="text-slate-200 font-semibold">保有ポジション</div>
                 <div class="text-xs text-slate-400">保有株と評価額</div>
               </div>
               <span class="text-xs text-slate-500" id="positionsValue">-</span>
             </div>
             <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
               <div class="pill rounded-2xl p-4">
-                <div class="text-slate-400">YES shares</div>
+                <div class="text-slate-400">YES シェア</div>
                 <div class="mt-2 text-xl font-bold" id="posYes">0</div>
               </div>
               <div class="pill rounded-2xl p-4">
-                <div class="text-slate-400">NO shares</div>
+                <div class="text-slate-400">NO シェア</div>
                 <div class="mt-2 text-xl font-bold" id="posNo">0</div>
               </div>
             </div>
           </section>
 
           <section class="card rounded-3xl p-6">
-            <div class="text-slate-200 font-semibold">Rules</div>
+            <div class="text-slate-200 font-semibold">ルール</div>
             <div class="mt-2 text-sm text-slate-300 whitespace-pre-line" id="rulesText">-</div>
-            <div class="mt-4 text-xs text-slate-400">Resolution source</div>
+            <div class="mt-4 text-xs text-slate-400">解決ソース</div>
             <div class="text-sm text-slate-300" id="resolutionSourceText">-</div>
-            <div class="mt-5 text-slate-200 font-semibold">Additional context</div>
+            <div class="mt-5 text-slate-200 font-semibold">追加コンテキスト</div>
             <div class="mt-2 text-sm text-slate-300 space-y-3" id="rulesUpdates"></div>
           </section>
 
           <section class="card rounded-3xl p-6">
-            <div class="text-slate-200 font-semibold">Recent trades</div>
+            <div class="text-slate-200 font-semibold">最近の取引</div>
             <div class="mt-3 text-sm text-slate-300 space-y-2" id="tradeRows"></div>
           </section>
 
@@ -274,19 +274,19 @@
           <div class="card rounded-3xl p-6">
             <div class="flex items-center justify-between">
               <div>
-                <div class="text-xs text-slate-400">Trade</div>
-                <div class="text-lg font-semibold">Quick buy</div>
+                <div class="text-xs text-slate-400">取引</div>
+                <div class="text-lg font-semibold">クイック購入</div>
               </div>
-              <span class="text-xs text-slate-500">Market order</span>
+              <span class="text-xs text-slate-500">成行注文</span>
             </div>
 
             <div class="mt-4 grid gap-3">
               <button id="quickYesBtn" class="w-full rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-4 text-left hover:bg-emerald-500/20">
-                <div class="text-sm text-emerald-200">Buy YES</div>
+                <div class="text-sm text-emerald-200">YES を購入</div>
                 <div class="mt-1 text-2xl font-semibold" id="quickYesPrice">-</div>
               </button>
               <button id="quickNoBtn" class="w-full rounded-2xl border border-sky-400/40 bg-sky-500/10 px-4 py-4 text-left hover:bg-sky-500/20">
-                <div class="text-sm text-sky-200">Buy NO</div>
+                <div class="text-sm text-sky-200">NO を購入</div>
                 <div class="mt-1 text-2xl font-semibold" id="quickNoPrice">-</div>
               </button>
             </div>
@@ -297,7 +297,7 @@
           <div class="card rounded-3xl p-6">
             <div class="flex items-center justify-between">
               <div>
-                <div class="text-xs text-slate-400">Orderbook</div>
+                <div class="text-xs text-slate-400">オーダーブック</div>
                 <div class="text-lg font-semibold">YES / NO</div>
               </div>
               <span class="text-xs text-slate-500" id="orderbookStatus">-</span>
@@ -305,15 +305,15 @@
 
             <div class="mt-4 grid grid-cols-2 gap-4 text-sm">
               <div>
-                <div class="text-xs text-slate-400 mb-2">YES bids</div>
+                <div class="text-xs text-slate-400 mb-2">YES 買い</div>
                 <div class="space-y-2" id="yesBids"></div>
-                <div class="text-xs text-slate-400 mt-4 mb-2">YES asks</div>
+                <div class="text-xs text-slate-400 mt-4 mb-2">YES 売り</div>
                 <div class="space-y-2" id="yesAsks"></div>
               </div>
               <div>
-                <div class="text-xs text-slate-400 mb-2">NO bids</div>
+                <div class="text-xs text-slate-400 mb-2">NO 買い</div>
                 <div class="space-y-2" id="noBids"></div>
-                <div class="text-xs text-slate-400 mt-4 mb-2">NO asks</div>
+                <div class="text-xs text-slate-400 mt-4 mb-2">NO 売り</div>
                 <div class="space-y-2" id="noAsks"></div>
               </div>
             </div>
@@ -332,7 +332,7 @@
       <div class="max-w-4xl mx-auto px-4 pb-4">
         <div class="rounded-3xl bg-slate-950 border border-slate-800 overflow-hidden shadow-2xl">
           <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-            <div class="text-sm text-slate-400">Order</div>
+            <div class="text-sm text-slate-400">注文</div>
             <button id="sheetClose" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">閉じる</button>
           </div>
 
@@ -350,8 +350,8 @@
             </div>
 
             <div class="mt-4 flex items-center gap-2">
-              <button id="orderBuyBtn" class="flex-1 px-3 py-2 rounded-lg bg-emerald-600/20 border border-emerald-600/40 text-emerald-200 text-sm">Buy</button>
-              <button id="orderSellBtn" class="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm">Sell</button>
+              <button id="orderBuyBtn" class="flex-1 px-3 py-2 rounded-lg bg-emerald-600/20 border border-emerald-600/40 text-emerald-200 text-sm">購入</button>
+              <button id="orderSellBtn" class="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm">売却</button>
             </div>
 
             <div class="mt-4 flex items-center justify-between">
@@ -389,7 +389,7 @@
               賭ける
             </button>
 
-            <div class="mt-2 text-xs text-slate-500">By trading, you agree to the Terms of Use.</div>
+            <div class="mt-2 text-xs text-slate-500">取引することで利用規約に同意したことになります。</div>
             <div class="mt-3 text-sm text-amber-200" id="sheetMsg"></div>
           </div>
         </div>
