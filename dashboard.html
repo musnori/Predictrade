@@ -1,11 +1,10 @@
 <!doctype html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover" />
-  <title>ダッシュボード - PredicTrade</title>
+  <title>Portfolio - PredicTrade</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     html, body { height: 100%; }
@@ -17,7 +16,7 @@
     }
     .gradient-text{background:linear-gradient(135deg,#10b981,#065f46);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
     .nav-link{transition:all .2s ease}.nav-link:hover{color:#10b981;transform:translateY(-1px)}
-    .stats-card{background:linear-gradient(135deg,#1e293b,#334155);border:1px solid rgba(16,185,129,.2)}
+    .card{background:linear-gradient(135deg,#1e293b,#334155);border:1px solid rgba(148,163,184,.2)}
   </style>
 </head>
 
@@ -33,96 +32,71 @@
       </div>
 
       <nav class="hidden md:flex space-x-8">
-        <a href="index.html" class="nav-link text-slate-300 hover:text-emerald-400">イベント</a>
-        <a href="create.html" class="nav-link text-slate-300 hover:text-emerald-400">作成</a>
-        <a href="dashboard.html" class="nav-link text-emerald-400 font-medium">ダッシュボード</a>
-        <a href="history.html" class="nav-link text-slate-300 hover:text-emerald-400">履歴</a>
+        <a href="index.html" class="nav-link text-slate-300 hover:text-emerald-400">Markets</a>
+        <a href="dashboard.html" class="nav-link text-emerald-400 font-medium">Portfolio</a>
       </nav>
 
       <div class="relative shrink-0">
-  <!-- 右上：タップでメニュー -->
-  <button
-    id="userMenuBtn"
-    class="text-sm text-right leading-tight px-2 py-1 rounded-lg hover:bg-slate-800/60 active:bg-slate-800/80"
-    aria-haspopup="menu"
-    aria-expanded="false"
-  >
-    <div class="text-slate-200 font-semibold" id="userName">-</div>
-    <div>
-      <span class="text-slate-400">ポイント:</span>
-      <span class="text-emerald-400 font-bold" id="userPoints">-</span>
-    </div>
-  </button>
+        <button
+          id="userMenuBtn"
+          class="text-sm text-right leading-tight px-2 py-1 rounded-lg hover:bg-slate-800/60 active:bg-slate-800/80"
+          aria-haspopup="menu"
+          aria-expanded="false"
+        >
+          <div class="text-slate-200 font-semibold" id="userName">-</div>
+          <div>
+            <span class="text-slate-400">Balance:</span>
+            <span class="text-emerald-400 font-bold" id="userPoints">-</span>
+          </div>
+        </button>
 
-  <!-- ドロップダウン -->
-  <div
-    id="userMenu"
-    class="hidden absolute right-0 mt-2 w-44 rounded-xl bg-slate-900/95 border border-slate-700 shadow-2xl backdrop-blur z-[999]"
-    role="menu"
-  >
-    <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">イベント</a>
-    <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">ダッシュボード</a>
-    <a href="history.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">履歴</a>
-  </div>
-</div>
-
+        <div
+          id="userMenu"
+          class="hidden absolute right-0 mt-2 w-44 rounded-xl bg-slate-900/95 border border-slate-700 shadow-2xl backdrop-blur z-[999]"
+          role="menu"
+        >
+          <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">Markets</a>
+          <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">Portfolio</a>
+        </div>
+      </div>
     </div>
   </div>
 </header>
 
+<!-- Demo Banner -->
+<div class="bg-amber-600/20 border-b border-amber-600/40 px-4 py-2 text-center text-sm text-amber-200">
+  This is a demo. No real money involved. Prediction shares are for educational purposes only.
+</div>
+
 <main class="py-8 sm:py-10">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <h2 class="text-2xl sm:text-3xl font-bold mb-6"><span class="gradient-text">ダッシュボード</span></h2>
-
-    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
-      <div class="stats-card rounded-xl p-6">
-        <div class="text-slate-400 text-sm mb-1">総ポイント</div>
-        <div class="text-3xl font-bold text-emerald-400" id="totalPoints">-</div>
-      </div>
-      <div class="stats-card rounded-xl p-6">
-        <div class="text-slate-400 text-sm mb-1">参加イベント</div>
-        <div class="text-3xl font-bold text-emerald-400" id="participatedEvents">-</div>
-      </div>
-      <div class="stats-card rounded-xl p-6">
-        <div class="text-slate-400 text-sm mb-1">予想投稿数</div>
-        <div class="text-3xl font-bold text-emerald-400" id="predCount">-</div>
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-2xl sm:text-3xl font-bold"><span class="gradient-text">Portfolio</span></h2>
+      <div class="flex gap-2">
+        <button id="resetWalletBtn" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">
+          Reset Wallet
+        </button>
+        <button id="clearAllBtn" class="px-4 py-2 rounded-lg bg-red-600/20 border border-red-600/40 hover:bg-red-600/30 text-sm text-red-200">
+          Clear All Data
+        </button>
       </div>
     </div>
 
-    <section class="mt-10 bg-slate-800/50 border border-slate-700 rounded-xl p-6" id="adminSnapshotPanel">
-      <div class="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <div class="text-lg font-semibold">Admin snapshot</div>
-          <div class="text-xs text-slate-400">balances / orderbook / trades / positions / locks</div>
-        </div>
-        <div class="flex items-center gap-2">
-          <input
-            id="adminKeyInput"
-            class="form-input px-3 py-2 rounded-lg text-slate-100 bg-slate-900 border border-slate-700 text-sm"
-            placeholder="ADMIN_KEY"
-          />
-          <button id="adminSnapshotBtn" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold">
-            Load
-          </button>
-        </div>
-      </div>
+    <!-- Stats -->
+    <div id="statsContainer"></div>
 
-      <div class="mt-4 grid md:grid-cols-2 gap-4 text-sm">
-        <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4">
-          <div class="text-slate-400 text-xs mb-2">Users</div>
-          <div id="adminUsers" class="space-y-2 text-slate-200"></div>
-        </div>
-        <div class="bg-slate-900/50 border border-slate-700 rounded-lg p-4">
-          <div class="text-slate-400 text-xs mb-2">Markets</div>
-          <div id="adminMarkets" class="space-y-2 text-slate-200"></div>
-        </div>
-      </div>
-      <div class="mt-4 text-xs text-amber-200" id="adminSnapshotMsg"></div>
-    </section>
+    <!-- Positions -->
+    <div id="positionsContainer" class="mt-6"></div>
+
+    <!-- Open Orders -->
+    <div id="ordersContainer" class="mt-6"></div>
+
+    <!-- Trade History -->
+    <div id="historyContainer" class="mt-6"></div>
   </div>
 </main>
 
-<script type="module" src="/src/dashboard.js"></script>
+<script type="module" src="/src/app/dashboard.ts"></script>
 
 <script>
   (function () {
@@ -155,7 +129,6 @@
     });
   })();
 </script>
-
 
 </body>
 </html>

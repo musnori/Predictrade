@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ja">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PredicTrade - Event</title>
+    <title>PredicTrade - Market</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       body {
@@ -38,9 +38,8 @@
         </div>
 
         <nav class="hidden md:flex items-center gap-6 text-sm text-slate-300">
-          <a href="index.html" class="hover:text-white">イベント</a>
-          <a href="dashboard.html" class="hover:text-white">ダッシュボード</a>
-          <a href="history.html" class="hover:text-white">履歴</a>
+          <a href="index.html" class="hover:text-white">Markets</a>
+          <a href="dashboard.html" class="hover:text-white">Portfolio</a>
         </nav>
 
         <div class="relative shrink-0 text-sm">
@@ -52,7 +51,7 @@
           >
             <div class="text-slate-200 font-semibold" id="userName">-</div>
             <div class="text-slate-300">
-              <span class="text-slate-400">ポイント:</span>
+              <span class="text-slate-400">Balance:</span>
               <span id="userPoints" class="text-emerald-400 font-bold">-</span>
             </div>
           </button>
@@ -62,13 +61,17 @@
             class="hidden absolute right-0 mt-2 w-44 rounded-xl bg-slate-950/95 border border-slate-800 shadow-2xl backdrop-blur z-[999]"
             role="menu"
           >
-            <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">イベント</a>
-            <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">ダッシュボード</a>
-            <a href="history.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">履歴</a>
+            <a href="index.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">Markets</a>
+            <a href="dashboard.html" class="block px-4 py-3 text-slate-200 hover:bg-slate-800/80" role="menuitem">Portfolio</a>
           </div>
         </div>
       </div>
     </header>
+
+    <!-- Demo Banner -->
+    <div class="bg-amber-600/20 border-b border-amber-600/40 px-4 py-2 text-center text-sm text-amber-200">
+      This is a demo. No real money involved. Prediction shares are for educational purposes only.
+    </div>
 
     <main class="max-w-6xl mx-auto px-4 py-6">
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -393,6 +396,6 @@
       </div>
     </div>
 
-    <script type="module" src="/src/event.js"></script>
+    <script type="module" src="/src/app/event.ts"></script>
   </body>
 </html>
